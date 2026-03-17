@@ -12,4 +12,7 @@ local.properties
 key.properties
 *.jks
 *.keystore
+fastlane/play-store-credentials.json
+fastlane/report.xml
+fastlane/README.md
 

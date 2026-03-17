@@ -1,0 +1,19 @@
+Developer Tools Browser gives you real Chrome DevTools running entirely on your Android device. No laptop, no ADB, no external device needed.
+
+Browse any website and instantly open a full DevTools panel — Elements, Console, Sources, Network, Performance, Lighthouse, and everything else you'd expect from Chrome DevTools on desktop.
+
+How it works: two WebViews run side by side. One is your browser, the other runs the real Chrome DevTools frontend built from Chromium source. A local proxy bridges them via the Chrome DevTools Protocol. Everything runs on-device.
+
+Features:
+• Full Chrome DevTools — Elements, Console, Network, Sources, Performance, Application, Lighthouse, and more
+• Inspect and edit HTML/CSS in real time
+• Debug JavaScript with the Console
+• Monitor network requests
+• Desktop and mobile user-agent modes
+• Multiple tabs
+• Find in page
+• Dock DevTools to bottom or right
+
+Built for developers who code on Android — the missing piece between your terminal, your editor, and your browser.
+
+By Unix Shells
