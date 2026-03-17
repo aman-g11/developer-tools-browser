@@ -26,7 +26,7 @@ Two WebViews: one is your browser, the other runs the real Chrome DevTools front
 # Output: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Requires JDK 17 and the Android SDK.
+Requires JDK 17 and Android SDK (API 35).
 
 ## License
 
