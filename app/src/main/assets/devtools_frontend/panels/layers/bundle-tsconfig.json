@@ -1,0 +1,1 @@
+{"compilerOptions":{"composite":true,"outDir":".","baseUrl":".","rootDir":"../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/layers"},"files":["../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/layers/layers.ts"],"references":[{"path":"./layers-tsconfig.json"}]}

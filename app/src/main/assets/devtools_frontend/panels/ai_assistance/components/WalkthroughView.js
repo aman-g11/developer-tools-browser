@@ -1,0 +1,191 @@
+"use strict";
+import * as i18n from "../../../core/i18n/i18n.js";
+import * as Buttons from "../../../ui/components/buttons/buttons.js";
+import * as Input from "../../../ui/components/input/input.js";
+import * as UI from "../../../ui/legacy/legacy.js";
+import * as Lit from "../../../ui/lit/lit.js";
+import chatMessageStyles from "./chatMessage.css.js";
+import { renderStep, titleForStep } from "./ChatMessage.js";
+import walkthroughViewStyles from "./walkthroughView.css.js";
+const lockedString = i18n.i18n.lockedString;
+const { html, render } = Lit;
+const UIStrings = {
+  /**
+   * @description Title for the close button in the walkthrough view.
+   */
+  close: "Close",
+  /**
+   * @description Title for the walkthrough view.
+   */
+  title: "Agent walkthrough",
+  /**
+   * @description Title for the button that shows the walkthrough when there are no widgets in the walkthrough.
+   */
+  showThinking: "Show thinking",
+  /**
+   * @description Title for the button that shows the walkthrough when there are widgets in the walkthrough.
+   */
+  showAgentWalkthrough: "Show agent walkthrough"
+};
+const str_ = i18n.i18n.registerUIStrings("panels/ai_assistance/components/WalkthroughView.ts", UIStrings);
+const i18nString = i18n.i18n.getLocalizedString.bind(void 0, str_);
+export function walkthroughTitle(input) {
+  if (input.isLoading) {
+    return titleForStep(input.lastStep);
+  }
+  if (input.hasWidgets) {
+    return lockedString(UIStrings.showAgentWalkthrough);
+  }
+  return lockedString(UIStrings.showThinking);
+}
+function renderInlineWalkthrough(input, stepsOutput, steps) {
+  const lastStep = steps.at(-1);
+  if (!input.isInlined || !lastStep) {
+    return Lit.nothing;
+  }
+  function onToggle(event) {
+    input.onToggle(event.target.open);
+  }
+  const hasWidgets = steps.some((s) => s.widgets?.length);
+  return html`
+    <details class="walkthrough-inline" ?open=${input.isExpanded} @toggle=${onToggle}>
+      <summary>
+        ${input.isLoading ? html`<devtools-spinner></devtools-spinner>` : Lit.nothing}
+        ${walkthroughTitle({ isLoading: input.isLoading, lastStep, hasWidgets })}
+        <devtools-icon name="chevron-down"></devtools-icon>
+      </summary>
+      ${stepsOutput}
+    </details>
+  `;
+}
+function renderSidebarWalkthrough(input, stepsOutput, stepsCount) {
+  if (input.isInlined) {
+    return Lit.nothing;
+  }
+  return html`
+    <div class="walkthrough-view">
+      <div class="walkthrough-header">
+         <div class="walkthrough-title">${i18nString(UIStrings.title)}</div>
+         <devtools-button
+          .data=${{
+    variant: Buttons.Button.Variant.TOOLBAR,
+    iconName: "cross",
+    title: i18nString(UIStrings.close),
+    jslogContext: "close-walkthrough"
+  }}
+          @click=${() => input.onToggle(false)}
+        ></devtools-button>
+      </div>
+      ${stepsOutput}
+      ${stepsCount === 0 ? html`
+        <div class="empty-state">
+          <p>No walkthrough steps available yet.</p>
+        </div>
+      ` : Lit.nothing}
+    </div>
+  `;
+}
+export const DEFAULT_VIEW = (input, _output, target) => {
+  const steps = input.message?.parts.filter((t) => t.type === "step")?.map((p) => p.step) ?? [];
+  const stepsOutput = steps.length > 0 ? html`
+    <div class="steps-container">
+      ${steps.map((step, index) => html`
+        <div class="walkthrough-step">
+          <span class="step-number">${index + 1}</span>
+          <div class="step-wrapper">
+            ${renderStep({
+    step,
+    isLoading: input.isLoading,
+    markdownRenderer: input.markdownRenderer,
+    isLast: index === steps.length - 1
+  })}
+          </div>
+        </div>
+      `)}
+    </div>
+  ` : Lit.nothing;
+  render(html`
+    <style>
+      ${Input.textInputStyles}
+      ${chatMessageStyles}
+      ${walkthroughViewStyles}
+    </style>
+    ${input.isInlined ? renderInlineWalkthrough(input, stepsOutput, steps) : renderSidebarWalkthrough(input, stepsOutput, steps.length)}`, target);
+};
+export class WalkthroughView extends UI.Widget.Widget {
+  #view;
+  #message = null;
+  // TODO(b/487921187): fix loading state - also unsure if we need this vs
+  // looking at the loading state in the message's steps.
+  #isLoading = false;
+  #markdownRenderer = null;
+  #onToggle = () => {
+  };
+  #onOpen = () => {
+  };
+  #isInlined = false;
+  #isExpanded = false;
+  constructor(element, view = DEFAULT_VIEW) {
+    super(element);
+    this.#view = view;
+  }
+  set isLoading(isLoading) {
+    this.#isLoading = isLoading;
+    this.requestUpdate();
+  }
+  get isLoading() {
+    return this.#isLoading;
+  }
+  get markdownRenderer() {
+    return this.#markdownRenderer;
+  }
+  set markdownRenderer(markdownRenderer) {
+    this.#markdownRenderer = markdownRenderer;
+    this.requestUpdate();
+  }
+  get message() {
+    return this.#message;
+  }
+  get onOpen() {
+    return this.#onOpen;
+  }
+  set onOpen(onOpen) {
+    this.#onOpen = onOpen;
+    this.requestUpdate();
+  }
+  set message(message) {
+    this.#message = message;
+    this.requestUpdate();
+  }
+  set onToggle(onToggle) {
+    this.#onToggle = onToggle;
+    this.requestUpdate();
+  }
+  set isInlined(isInlined) {
+    this.#isInlined = isInlined;
+    this.requestUpdate();
+  }
+  set isExpanded(isExpanded) {
+    this.#isExpanded = isExpanded;
+    this.requestUpdate();
+  }
+  performUpdate() {
+    if (!this.#markdownRenderer) {
+      return;
+    }
+    this.#view(
+      {
+        isLoading: this.#isLoading,
+        markdownRenderer: this.#markdownRenderer,
+        onToggle: this.#onToggle,
+        onOpen: this.#onOpen,
+        isInlined: this.#isInlined,
+        isExpanded: this.#isExpanded,
+        message: this.#message
+      },
+      null,
+      this.contentElement
+    );
+  }
+}
+//# sourceMappingURL=WalkthroughView.js.map

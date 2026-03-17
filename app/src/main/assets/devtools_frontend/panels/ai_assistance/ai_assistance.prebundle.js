@@ -1,0 +1,12 @@
+"use strict";
+export * from "./AiAssistancePanel.js";
+export * from "./components/ChatView.js";
+export * as ChatInput from "./components/ChatInput.js";
+export * from "./components/MarkdownRendererWithCodeBlock.js";
+export * from "./SelectWorkspaceDialog.js";
+export * as ChatMessage from "./components/ChatMessage.js";
+export * as ExploreWidget from "./components/ExploreWidget.js";
+export * as PatchWidget from "./PatchWidget.js";
+export * as DisabledWidget from "./components/DisabledWidget.js";
+export * as WalkthroughView from "./components/WalkthroughView.js";
+//# sourceMappingURL=ai_assistance.prebundle.js.map

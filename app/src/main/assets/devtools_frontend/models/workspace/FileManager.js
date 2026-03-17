@@ -1,0 +1,78 @@
+"use strict";
+import * as Common from "../../core/common/common.js";
+import * as Host from "../../core/host/host.js";
+let fileManagerInstance;
+export class FileManager extends Common.ObjectWrapper.ObjectWrapper {
+  #saveCallbacks = /* @__PURE__ */ new Map();
+  constructor() {
+    super();
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.addEventListener(
+      Host.InspectorFrontendHostAPI.Events.SavedURL,
+      this.savedURL,
+      this
+    );
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.addEventListener(
+      Host.InspectorFrontendHostAPI.Events.CanceledSaveURL,
+      this.#canceledSavedURL,
+      this
+    );
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.addEventListener(
+      Host.InspectorFrontendHostAPI.Events.AppendedToURL,
+      this.appendedToURL,
+      this
+    );
+  }
+  static instance(opts = { forceNew: null }) {
+    const { forceNew } = opts;
+    if (!fileManagerInstance || forceNew) {
+      fileManagerInstance = new FileManager();
+    }
+    return fileManagerInstance;
+  }
+  /**
+   * {@link FileManager.close | close} *must* be called, for the InspectorFrontendHostStub case, to complete the saving.
+   * @param url The url of the file to save. **NOTE:** The backend truncates this filename to 64 characters.
+   */
+  save(url, contentData, forceSaveAs) {
+    const result = new Promise((resolve) => this.#saveCallbacks.set(url, resolve));
+    const { isTextContent } = contentData;
+    const content = isTextContent ? contentData.text : contentData.base64;
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.save(url, content, forceSaveAs, !isTextContent);
+    return result;
+  }
+  /**
+   * Used in web tests
+   */
+  savedURL(event) {
+    const { url, fileSystemPath } = event.data;
+    const callback = this.#saveCallbacks.get(url);
+    this.#saveCallbacks.delete(url);
+    if (callback) {
+      callback({ fileSystemPath });
+    }
+  }
+  #canceledSavedURL({ data: url }) {
+    const callback = this.#saveCallbacks.get(url);
+    this.#saveCallbacks.delete(url);
+    if (callback) {
+      callback(null);
+    }
+  }
+  append(url, content) {
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.append(url, content);
+  }
+  close(url) {
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.close(url);
+  }
+  /**
+   * Used in web tests
+   */
+  appendedToURL({ data: url }) {
+    this.dispatchEventToListeners("AppendedToURL" /* APPENDED_TO_URL */, url);
+  }
+}
+export var Events = /* @__PURE__ */ ((Events2) => {
+  Events2["APPENDED_TO_URL"] = "AppendedToURL";
+  return Events2;
+})(Events || {});
+//# sourceMappingURL=FileManager.js.map

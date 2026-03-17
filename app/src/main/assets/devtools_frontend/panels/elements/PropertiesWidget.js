@@ -1,0 +1,220 @@
+"use strict";
+import "../../ui/legacy/legacy.js";
+import * as Common from "../../core/common/common.js";
+import * as Host from "../../core/host/host.js";
+import * as i18n from "../../core/i18n/i18n.js";
+import * as Platform from "../../core/platform/platform.js";
+import * as SDK from "../../core/sdk/sdk.js";
+import * as ObjectUI from "../../ui/legacy/components/object_ui/object_ui.js";
+import * as UI from "../../ui/legacy/legacy.js";
+import { html, nothing, render } from "../../ui/lit/lit.js";
+import * as VisualLogging from "../../ui/visual_logging/visual_logging.js";
+import propertiesWidgetStyles from "./propertiesWidget.css.js";
+const OBJECT_GROUP_NAME = "properties-sidebar-pane";
+const { bindToSetting } = UI.UIUtils;
+const UIStrings = {
+  /**
+   * @description Text on the checkbox in the Properties tab of the Elements panel, which controls whether
+   * all properties of the currently selected DOM element are shown, or only meaningful properties (i.e.
+   * excluding properties whose values aren't set for example).
+   */
+  showAll: "Show all",
+  /**
+   * @description Tooltip on the checkbox in the Properties tab of the Elements panel, which controls whether
+   * all properties of the currently selected DOM element are shown, or only meaningful properties (i.e.
+   * excluding properties whose values aren't set for example).
+   */
+  showAllTooltip: "When unchecked, only properties whose values are neither null nor undefined will be shown",
+  /**
+   * @description Text shown to the user when a filter is applied in the Properties tab of the Elements panel, but
+   * no properties matched the filter and thus no results were returned.
+   */
+  noMatchingProperty: "No matching property"
+};
+const str_ = i18n.i18n.registerUIStrings("panels/elements/PropertiesWidget.ts", UIStrings);
+const i18nString = i18n.i18n.getLocalizedString.bind(void 0, str_);
+export const DEFAULT_VIEW = (input, _output, target) => {
+  render(html`
+    <div jslog=${VisualLogging.pane("element-properties").track({ resize: true })}>
+      <div class="hbox properties-widget-toolbar">
+        <devtools-toolbar class="styles-pane-toolbar" role="presentation">
+          <devtools-toolbar-input
+            type="filter"
+            ?regex=${true}
+            @change=${input.onFilterChanged}
+            @regextoggle=${input.onRegexToggled}
+            style="flex-grow:1; flex-shrink:1"
+          ></devtools-toolbar-input>
+          <devtools-checkbox title=${i18nString(UIStrings.showAllTooltip)} ${bindToSetting(getShowAllPropertiesSetting())}>
+            ${i18nString(UIStrings.showAll)}
+          </devtools-checkbox>
+        </devtools-toolbar>
+      </div>
+      ${input.objectTree && input.allChildrenFiltered ? html`
+        <div class="gray-info-message">${i18nString(UIStrings.noMatchingProperty)}</div>
+      ` : nothing}
+      ${input.treeOutline.element}
+    </div>`, target);
+};
+const getShowAllPropertiesSetting = () => Common.Settings.Settings.instance().createSetting(
+  "show-all-properties",
+  /* defaultValue */
+  false
+);
+export class PropertiesWidget extends UI.Widget.VBox {
+  showAllPropertiesSetting;
+  filterRegex = null;
+  treeOutline;
+  #lastRequestedNode = null;
+  #view;
+  #pendingNodeUpdate = true;
+  #objectTree = null;
+  #isRegex = false;
+  #filterText = "";
+  constructor(view = DEFAULT_VIEW) {
+    super({ useShadowDom: true });
+    this.registerRequiredCSS(propertiesWidgetStyles);
+    this.showAllPropertiesSetting = getShowAllPropertiesSetting();
+    this.showAllPropertiesSetting.addChangeListener(this.onFilterChanged.bind(this));
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+      SDK.DOMModel.DOMModel,
+      SDK.DOMModel.Events.AttrModified,
+      this.onNodeChange,
+      this,
+      { scoped: true }
+    );
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+      SDK.DOMModel.DOMModel,
+      SDK.DOMModel.Events.AttrRemoved,
+      this.onNodeChange,
+      this,
+      { scoped: true }
+    );
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+      SDK.DOMModel.DOMModel,
+      SDK.DOMModel.Events.CharacterDataModified,
+      this.onNodeChange,
+      this,
+      { scoped: true }
+    );
+    SDK.TargetManager.TargetManager.instance().addModelListener(
+      SDK.DOMModel.DOMModel,
+      SDK.DOMModel.Events.ChildNodeCountUpdated,
+      this.onNodeChange,
+      this,
+      { scoped: true }
+    );
+    UI.Context.Context.instance().addFlavorChangeListener(SDK.DOMModel.DOMNode, this.setNode, this);
+    this.#view = view;
+    this.treeOutline = new ObjectUI.ObjectPropertiesSection.ObjectPropertiesSectionsTreeOutline({ readOnly: true });
+    this.treeOutline.setShowSelectionOnKeyboardFocus(
+      /* show */
+      true,
+      /* preventTabOrder */
+      false
+    );
+    this.treeOutline.addEventListener(UI.TreeOutline.Events.ElementExpanded, () => {
+      Host.userMetrics.actionTaken(Host.UserMetrics.Action.DOMPropertiesExpanded);
+    });
+    this.requestUpdate();
+  }
+  #buildFilterRegex(text) {
+    if (!text) {
+      return null;
+    }
+    if (this.#isRegex) {
+      try {
+        return new RegExp(text, "i");
+      } catch {
+      }
+    }
+    return new RegExp(Platform.StringUtilities.escapeForRegExp(text), "i");
+  }
+  onFilterChanged(event) {
+    if ("detail" in event) {
+      this.#filterText = event.detail;
+      this.filterRegex = this.#buildFilterRegex(event.detail);
+    }
+    this.#updateFilter();
+    this.requestUpdate();
+  }
+  onRegexToggled() {
+    this.#isRegex = !this.#isRegex;
+    this.filterRegex = this.#buildFilterRegex(this.#filterText);
+    this.#updateFilter();
+    this.requestUpdate();
+  }
+  #updateFilter() {
+    this.#objectTree?.setFilter({
+      includeNullOrUndefinedValues: this.showAllPropertiesSetting.get(),
+      regex: this.filterRegex
+    });
+  }
+  setNode() {
+    this.#pendingNodeUpdate = true;
+    this.requestUpdate();
+  }
+  async #updateNodeIfRequired() {
+    if (!this.#pendingNodeUpdate) {
+      return;
+    }
+    this.#pendingNodeUpdate = false;
+    this.#lastRequestedNode?.domModel().runtimeModel().releaseObjectGroup(OBJECT_GROUP_NAME);
+    this.#lastRequestedNode = UI.Context.Context.instance().flavor(SDK.DOMModel.DOMNode);
+    if (!this.#lastRequestedNode) {
+      this.#objectTree = null;
+      return;
+    }
+    const object = await this.#lastRequestedNode.resolveToObject(OBJECT_GROUP_NAME);
+    if (!object) {
+      return;
+    }
+    this.#objectTree = new ObjectUI.ObjectPropertiesSection.ObjectTree(
+      object,
+      ObjectUI.ObjectPropertiesSection.ObjectPropertiesMode.OWN_AND_INTERNAL_AND_INHERITED
+    );
+    this.#updateFilter();
+  }
+  async performUpdate() {
+    await this.#updateNodeIfRequired();
+    if (!this.#objectTree) {
+      this.treeOutline.removeChildren();
+    } else {
+      const treeElement = this.treeOutline.rootElement();
+      treeElement.removeChildren();
+      ObjectUI.ObjectPropertiesSection.ObjectPropertyTreeElement.populateWithProperties(
+        treeElement,
+        await this.#objectTree.populateChildrenIfNeeded(),
+        true,
+        true
+        /* skipGettersAndSetters */
+      );
+    }
+    const allChildrenFiltered = !(this.#objectTree?.children?.accessors?.some((c) => !c.isFiltered) || this.#objectTree?.children?.arrayRanges?.some(() => true) || this.#objectTree?.children?.internalProperties?.some((c) => !c.isFiltered) || this.#objectTree?.children?.properties?.some((c) => !c.isFiltered));
+    this.#view(
+      {
+        onFilterChanged: this.onFilterChanged.bind(this),
+        onRegexToggled: this.onRegexToggled.bind(this),
+        isRegex: this.#isRegex,
+        treeOutline: this.treeOutline,
+        allChildrenFiltered,
+        objectTree: this.#objectTree
+      },
+      {},
+      this.contentElement
+    );
+  }
+  onNodeChange(event) {
+    if (!this.#lastRequestedNode) {
+      return;
+    }
+    const data = event.data;
+    const node = data instanceof SDK.DOMModel.DOMNode ? data : data.node;
+    if (this.#lastRequestedNode !== node) {
+      return;
+    }
+    this.#pendingNodeUpdate = true;
+    this.requestUpdate();
+  }
+}
+//# sourceMappingURL=PropertiesWidget.js.map

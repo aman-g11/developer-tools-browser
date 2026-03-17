@@ -1,0 +1,36 @@
+"use strict";
+import * as PuppeteerReplay from "../../../third_party/puppeteer-replay/puppeteer-replay.js";
+import {
+  StepType
+} from "./Schema.js";
+export function createViewportStep(viewport) {
+  return {
+    type: StepType.SetViewport,
+    width: viewport.clientWidth,
+    height: viewport.clientHeight,
+    // TODO read real parameters here
+    deviceScaleFactor: 1,
+    isMobile: false,
+    hasTouch: false,
+    isLandscape: false
+  };
+}
+export function createEmulateNetworkConditionsStep(conditions) {
+  return {
+    type: StepType.EmulateNetworkConditions,
+    download: conditions.download,
+    upload: conditions.upload,
+    latency: conditions.latency
+  };
+}
+export function areSelectorsEqual(stepA, stepB) {
+  if ("selectors" in stepA && "selectors" in stepB) {
+    return JSON.stringify(stepA.selectors) === JSON.stringify(stepB.selectors);
+  }
+  return !("selectors" in stepA) && !("selectors" in stepB);
+}
+export const minTimeout = 1;
+export const maxTimeout = 3e4;
+export const parse = PuppeteerReplay.parse;
+export const parseStep = PuppeteerReplay.parseStep;
+//# sourceMappingURL=SchemaUtils.js.map

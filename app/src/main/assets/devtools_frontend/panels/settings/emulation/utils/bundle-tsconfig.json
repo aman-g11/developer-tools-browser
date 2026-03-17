@@ -1,0 +1,1 @@
+{"compilerOptions":{"composite":true,"outDir":".","baseUrl":".","rootDir":"../../../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/settings/emulation/utils"},"files":["../../../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/settings/emulation/utils/utils.ts"],"references":[{"path":"./ui_utils-tsconfig.json"}]}

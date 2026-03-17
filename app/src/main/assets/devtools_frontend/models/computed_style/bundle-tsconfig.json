@@ -1,0 +1,1 @@
+{"compilerOptions":{"composite":true,"outDir":".","baseUrl":".","rootDir":"../../../../../../../../../third_party/devtools-frontend/src/front_end/models/computed_style"},"files":["../../../../../../../../../third_party/devtools-frontend/src/front_end/models/computed_style/computed_style.ts"],"references":[{"path":"./computed_style-tsconfig.json"}]}

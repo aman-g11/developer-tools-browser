@@ -1,0 +1,1 @@
+{"compilerOptions":{"composite":true,"outDir":".","baseUrl":".","rootDir":"../../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/network/forward"},"files":["../../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/network/forward/forward.ts"],"references":[{"path":"./forward-tsconfig.json"}]}

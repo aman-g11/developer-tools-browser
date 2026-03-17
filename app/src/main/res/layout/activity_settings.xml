@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1a1a2e">
+
+    <!-- Settings toolbar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:background="#0d0d1a"
+        android:gravity="center_vertical"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
+
+        <ImageButton
+            android:id="@+id/settingsBack"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@drawable/ic_back"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Back"
+            android:tint="#aaaaaa"
+            android:scaleType="centerInside" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Settings"
+            android:textColor="#e0e0e0"
+            android:textSize="18sp"
+            android:paddingStart="12dp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Browsing section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Browsing"
+                android:textColor="#4fc3f7"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:paddingBottom="8dp" />
+
+            <Switch
+                android:id="@+id/switchJavascript"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="JavaScript"
+                android:textColor="#e0e0e0"
+                android:checked="true" />
+
+            <Switch
+                android:id="@+id/switchDesktopDefault"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Desktop mode by default"
+                android:textColor="#e0e0e0"
+                android:checked="true" />
+
+            <Switch
+                android:id="@+id/switchBlockImages"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Block images"
+                android:textColor="#e0e0e0"
+                android:checked="false" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#333355"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- User Agent -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Custom User Agent (leave empty for default)"
+                android:textColor="#4fc3f7"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:paddingBottom="8dp" />
+
+            <EditText
+                android:id="@+id/editUserAgent"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:background="@drawable/url_bar_bg"
+                android:textColor="#e0e0e0"
+                android:textColorHint="#666666"
+                android:textSize="12sp"
+                android:hint="Default user agent"
+                android:singleLine="true"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#333355"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- DevTools section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="DevTools Ports"
+                android:textColor="#4fc3f7"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:paddingBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingEnd="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="CDP HTTP Port"
+                        android:textColor="#aaaaaa"
+                        android:textSize="12sp"
+                        android:paddingBottom="4dp" />
+
+                    <EditText
+                        android:id="@+id/editCdpHttpPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp"
+                        android:background="@drawable/url_bar_bg"
+                        android:textColor="#e0e0e0"
+                        android:textSize="13sp"
+                        android:inputType="number"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingStart="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="CDP WebSocket Port"
+                        android:textColor="#aaaaaa"
+                        android:textSize="12sp"
+                        android:paddingBottom="4dp" />
+
+                    <EditText
+                        android:id="@+id/editCdpWsPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp"
+                        android:background="@drawable/url_bar_bg"
+                        android:textColor="#e0e0e0"
+                        android:textSize="13sp"
+                        android:inputType="number"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Restart app after changing ports"
+                android:textColor="#666666"
+                android:textSize="11sp"
+                android:paddingTop="4dp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#333355"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Clear data section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Clear Data"
+                android:textColor="#4fc3f7"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:paddingBottom="8dp" />
+
+            <Button
+                android:id="@+id/btnClearCache"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:text="Clear Cache"
+                android:textColor="#e0e0e0"
+                android:backgroundTint="#333355"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btnClearCookies"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:text="Clear Cookies"
+                android:textColor="#e0e0e0"
+                android:backgroundTint="#333355"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btnClearHistory"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:text="Clear History"
+                android:textColor="#e0e0e0"
+                android:backgroundTint="#333355"
+                android:layout_marginBottom="8dp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#333355"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- About -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Developer Tools Browser"
+                android:textColor="#aaaaaa"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="by Unix Shells"
+                android:textColor="#666666"
+                android:textSize="12sp"
+                android:paddingTop="2dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="v1.0.0"
+                android:textColor="#666666"
+                android:textSize="12sp"
+                android:paddingTop="2dp" />
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

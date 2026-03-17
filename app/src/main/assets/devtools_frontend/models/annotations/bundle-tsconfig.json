@@ -1,0 +1,1 @@
+{"compilerOptions":{"composite":true,"outDir":".","baseUrl":".","rootDir":"../../../../../../../../../third_party/devtools-frontend/src/front_end/models/annotations"},"files":["../../../../../../../../../third_party/devtools-frontend/src/front_end/models/annotations/annotations.ts"],"references":[{"path":"./annotations-tsconfig.json"}]}

@@ -1,0 +1,64 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "composite": true,
+    "declaration": true,
+    "experimentalDecorators": true,
+    "forceConsistentCasingInFileNames": true,
+    "inlineSources": true,
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2023",
+      "ES2024.Promise",
+      "ESNext.Iterator",
+      "ESNext.Collection",
+      "ESNext.Array"
+    ],
+    "module": "esnext",
+    "noEmitOnError": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": ".",
+    "rootDir": "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics",
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "target": "ES2023",
+    "tsBuildInfoFile": "metrics-tsconfig.json.tsbuildinfo",
+    "typeRoots": [],
+    "types": [],
+    "useUnknownInCatchVariables": false
+  },
+  "files": [
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics/FirstContentfulPaint.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics/Interactive.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics/LargestContentfulPaint.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics/MaxPotentialFID.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics/Metric.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics/SpeedIndex.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics/TBTUtils.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/models/trace/lantern/metrics/TotalBlockingTime.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/legacy/legacy-defs.d.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/front_end/global_typings/global_defs.d.ts",
+    "../../../../../../../../../../../third_party/devtools-frontend/src/node_modules/@types/filesystem/index.d.ts"
+  ],
+  "references": [
+    {
+      "path": "../core/bundle-tsconfig.json"
+    },
+    {
+      "path": "../graph/bundle-tsconfig.json"
+    },
+    {
+      "path": "../simulation/bundle-tsconfig.json"
+    },
+    {
+      "path": "../types/bundle-tsconfig.json"
+    }
+  ]
+}

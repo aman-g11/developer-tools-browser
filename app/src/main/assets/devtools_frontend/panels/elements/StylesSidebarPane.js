@@ -1,0 +1,1910 @@
+"use strict";
+import "../../ui/legacy/legacy.js";
+import * as Common from "../../core/common/common.js";
+import * as Host from "../../core/host/host.js";
+import * as i18n from "../../core/i18n/i18n.js";
+import * as Platform from "../../core/platform/platform.js";
+import { assertNotNullOrUndefined } from "../../core/platform/platform.js";
+import * as Root from "../../core/root/root.js";
+import * as SDK from "../../core/sdk/sdk.js";
+import * as Protocol from "../../generated/protocol.js";
+import * as AiCodeCompletion from "../../models/ai_code_completion/ai_code_completion.js";
+import * as Bindings from "../../models/bindings/bindings.js";
+import * as TextUtils from "../../models/text_utils/text_utils.js";
+import * as TextEditor from "../../ui/components/text_editor/text_editor.js";
+import { createIcon, Icon } from "../../ui/kit/kit.js";
+import * as InlineEditor from "../../ui/legacy/components/inline_editor/inline_editor.js";
+import * as Components from "../../ui/legacy/components/utils/utils.js";
+import * as UI from "../../ui/legacy/legacy.js";
+import * as VisualLogging from "../../ui/visual_logging/visual_logging.js";
+import * as PanelsCommon from "../common/common.js";
+import * as ElementsComponents from "./components/components.js";
+import { ElementsPanel } from "./ElementsPanel.js";
+import { ElementsSidebarPane } from "./ElementsSidebarPane.js";
+import { ImagePreviewPopover } from "./ImagePreviewPopover.js";
+import * as LayersWidget from "./LayersWidget.js";
+import { StyleEditorWidget } from "./StyleEditorWidget.js";
+import {
+  AtRuleSection,
+  BlankStylePropertiesSection,
+  FunctionRuleSection,
+  HighlightPseudoStylePropertiesSection,
+  KeyframePropertiesSection,
+  PositionTryRuleSection,
+  RegisteredPropertiesSection,
+  StylePropertiesSection
+} from "./StylePropertiesSection.js";
+import { StylePropertyHighlighter } from "./StylePropertyHighlighter.js";
+import * as StylesAiCodeCompletionProvider from "./StylesAiCodeCompletionProvider.js";
+import stylesSidebarPaneStyles from "./stylesSidebarPane.css.js";
+import { WebCustomData } from "./WebCustomData.js";
+const UIStrings = {
+  /**
+   * @description No matches element text content in Styles Sidebar Pane of the Elements panel
+   */
+  noMatchingSelectorOrStyle: "No matching selector or style",
+  /**
+   * /**
+   * @description Text to announce the result of the filter input in the Styles Sidebar Pane of the Elements panel
+   */
+  visibleSelectors: "{n, plural, =1 {# visible selector listed below} other {# visible selectors listed below}}",
+  /**
+   * @description Separator element text content in Styles Sidebar Pane of the Elements panel
+   * @example {scrollbar-corner} PH1
+   */
+  pseudoSElement: "Pseudo ::{PH1} element",
+  /**
+   * @description Text of a DOM element in Styles Sidebar Pane of the Elements panel
+   */
+  inheritedFroms: "Inherited from ",
+  /**
+   * @description Text of an inherited pseudo element in Styles Sidebar Pane of the Elements panel
+   * @example {highlight} PH1
+   */
+  inheritedFromSPseudoOf: "Inherited from ::{PH1} pseudo of ",
+  /**
+   * @description Title of  in styles sidebar pane of the elements panel
+   * @example {Ctrl} PH1
+   * @example {Alt} PH2
+   */
+  incrementdecrementWithMousewheelOne: "Increment/decrement with mousewheel or up/down keys. {PH1}: R \xB11, Shift: G \xB11, {PH2}: B \xB11",
+  /**
+   * @description Title of  in styles sidebar pane of the elements panel
+   * @example {Ctrl} PH1
+   * @example {Alt} PH2
+   */
+  incrementdecrementWithMousewheelHundred: "Increment/decrement with mousewheel or up/down keys. {PH1}: \xB1100, Shift: \xB110, {PH2}: \xB10.1",
+  /**
+   * @description Tooltip text that appears when hovering over the rendering button in the Styles Sidebar Pane of the Elements panel
+   */
+  toggleRenderingEmulations: "Toggle common rendering emulations",
+  /**
+   * @description Rendering emulation option for toggling the automatic dark mode
+   */
+  automaticDarkMode: "Automatic dark mode",
+  /**
+   * @description Text displayed on layer separators in the styles sidebar pane.
+   */
+  layer: "Layer",
+  /**
+   * @description Tooltip text for the link in the sidebar pane layer separators that reveals the layer in the layer tree view.
+   */
+  clickToRevealLayer: "Click to reveal layer in layer tree"
+};
+const str_ = i18n.i18n.registerUIStrings("panels/elements/StylesSidebarPane.ts", UIStrings);
+const i18nString = i18n.i18n.getLocalizedString.bind(void 0, str_);
+const FILTER_IDLE_PERIOD = 500;
+const MIN_FOLDED_SECTIONS_COUNT = 5;
+export const REGISTERED_PROPERTY_SECTION_NAME = "@property";
+export const FUNCTION_SECTION_NAME = "@function";
+export const AT_RULE_SECTION_NAME = "@font-*";
+const HIGHLIGHTABLE_PROPERTIES = [
+  { mode: "padding", properties: ["padding"] },
+  { mode: "border", properties: ["border"] },
+  { mode: "margin", properties: ["margin"] },
+  { mode: "gap", properties: ["gap", "grid-gap"] },
+  { mode: "column-gap", properties: ["column-gap", "grid-column-gap"] },
+  { mode: "row-gap", properties: ["row-gap", "grid-row-gap"] },
+  { mode: "grid-template-columns", properties: ["grid-template-columns"] },
+  { mode: "grid-template-rows", properties: ["grid-template-rows"] },
+  { mode: "grid-template-areas", properties: ["grid-areas"] },
+  { mode: "justify-content", properties: ["justify-content"] },
+  { mode: "align-content", properties: ["align-content"] },
+  { mode: "align-items", properties: ["align-items"] },
+  { mode: "flexibility", properties: ["flex", "flex-basis", "flex-grow", "flex-shrink"] }
+];
+export class StylesSidebarPane extends Common.ObjectWrapper.eventMixin(
+  ElementsSidebarPane
+) {
+  matchedStyles = null;
+  currentToolbarPane = null;
+  animatedToolbarPane = null;
+  pendingWidget = null;
+  pendingWidgetToggle = null;
+  toolbar = null;
+  toolbarPaneElement;
+  lastFilterChange = null;
+  visibleSections = null;
+  noMatchesElement;
+  sectionsContainer;
+  sectionByElement = /* @__PURE__ */ new WeakMap();
+  #swatchPopoverHelper = new InlineEditor.SwatchPopoverHelper.SwatchPopoverHelper();
+  linkifier = new Components.Linkifier.Linkifier(
+    MAX_LINK_LENGTH,
+    /* useLinkDecorator */
+    true
+  );
+  decorator;
+  lastRevealedProperty = null;
+  userOperation = false;
+  isEditingStyle = false;
+  #filterRegex = null;
+  #isRegex = false;
+  #filterText = "";
+  isActivePropertyHighlighted = false;
+  initialUpdateCompleted = false;
+  hasMatchedStyles = false;
+  sectionBlocks = [];
+  idleCallbackManager = null;
+  needsForceUpdate = false;
+  resizeThrottler = new Common.Throttler.Throttler(100);
+  resetUpdateThrottler = new Common.Throttler.Throttler(500);
+  computedStyleUpdateThrottler = new Common.Throttler.Throttler(500);
+  scrollerElement;
+  boundOnScroll;
+  imagePreviewPopover;
+  #webCustomData;
+  activeCSSAngle = null;
+  #updateAbortController;
+  constructor(computedStyleModel) {
+    super(computedStyleModel, { delegatesFocus: true });
+    this.setMinimumSize(96, 26);
+    this.registerRequiredCSS(stylesSidebarPaneStyles);
+    Common.Settings.Settings.instance().moduleSetting("text-editor-indent").addChangeListener(this.requestUpdate, this);
+    this.toolbarPaneElement = this.createStylesSidebarToolbar();
+    this.noMatchesElement = this.contentElement.createChild("div", "gray-info-message hidden");
+    this.noMatchesElement.textContent = i18nString(UIStrings.noMatchingSelectorOrStyle);
+    this.sectionsContainer = new UI.Widget.VBox();
+    this.sectionsContainer.show(this.contentElement);
+    UI.ARIAUtils.markAsList(this.sectionsContainer.contentElement);
+    this.sectionsContainer.contentElement.addEventListener("keydown", this.sectionsContainerKeyDown.bind(this), false);
+    this.sectionsContainer.contentElement.addEventListener(
+      "focusin",
+      this.sectionsContainerFocusChanged.bind(this),
+      false
+    );
+    this.sectionsContainer.contentElement.addEventListener(
+      "focusout",
+      this.sectionsContainerFocusChanged.bind(this),
+      false
+    );
+    this.#swatchPopoverHelper.addEventListener(
+      InlineEditor.SwatchPopoverHelper.Events.WILL_SHOW_POPOVER,
+      this.hideAllPopovers,
+      this
+    );
+    this.decorator = new StylePropertyHighlighter(this);
+    this.contentElement.classList.add("styles-pane");
+    UI.Context.Context.instance().addFlavorChangeListener(SDK.DOMModel.DOMNode, this.forceUpdate, this);
+    this.contentElement.addEventListener("copy", this.clipboardCopy.bind(this));
+    this.boundOnScroll = this.onScroll.bind(this);
+    this.imagePreviewPopover = new ImagePreviewPopover(
+      this.contentElement,
+      (event) => {
+        const link = event.composedPath()[0];
+        if (link instanceof Element) {
+          return link;
+        }
+        return null;
+      },
+      async () => {
+        const features = await Components.ImagePreview.loadPrecomputedFeatures(this.node());
+        return features;
+      }
+    );
+    UI.ViewManager.ViewManager.instance().addEventListener(UI.ViewManager.Events.VIEW_VISIBILITY_CHANGED, (event) => {
+      if (event.data.revealedViewId === "animations" || event.data.hiddenViewId === "animations") {
+        this.#scheduleResetUpdateIfNotEditing();
+      }
+    });
+  }
+  get webCustomData() {
+    if (!this.#webCustomData && Common.Settings.Settings.instance().moduleSetting("show-css-property-documentation-on-hover").get()) {
+      this.#webCustomData = WebCustomData.create();
+    }
+    return this.#webCustomData;
+  }
+  onScroll(_event) {
+    this.hideAllPopovers();
+  }
+  swatchPopoverHelper() {
+    return this.#swatchPopoverHelper;
+  }
+  setUserOperation(userOperation) {
+    this.userOperation = userOperation;
+  }
+  revealProperty(cssProperty) {
+    void this.decorator.highlightProperty(cssProperty);
+    this.lastRevealedProperty = cssProperty;
+    this.requestUpdate();
+  }
+  jumpToProperty(propertyName, sectionName, blockName) {
+    return this.decorator.findAndHighlightPropertyName(propertyName, sectionName, blockName);
+  }
+  jumpToDeclaration(valueSource) {
+    if (valueSource.declaration instanceof SDK.CSSProperty.CSSProperty) {
+      this.revealProperty(valueSource.declaration);
+    } else {
+      this.jumpToProperty("initial-value", valueSource.name, REGISTERED_PROPERTY_SECTION_NAME);
+    }
+  }
+  jumpToSection(sectionName, blockName) {
+    this.decorator.findAndHighlightSection(sectionName, blockName);
+  }
+  jumpToSectionBlock(section) {
+    this.decorator.findAndHighlightSectionBlock(section);
+  }
+  jumpToFunctionDefinition(functionName) {
+    this.jumpToSection(functionName, FUNCTION_SECTION_NAME);
+  }
+  jumpToFontPaletteDefinition(paletteName) {
+    this.jumpToSection(`@font-palette-values ${paletteName}`, AT_RULE_SECTION_NAME);
+  }
+  forceUpdate() {
+    this.needsForceUpdate = true;
+    this.#swatchPopoverHelper.hide();
+    this.#updateAbortController?.abort();
+    this.resetCache();
+    this.requestUpdate();
+  }
+  sectionsContainerKeyDown(event) {
+    const activeElement = UI.DOMUtilities.deepActiveElement(this.sectionsContainer.contentElement.ownerDocument);
+    if (!activeElement) {
+      return;
+    }
+    const section = this.sectionByElement.get(activeElement);
+    if (!section) {
+      return;
+    }
+    let sectionToFocus = null;
+    let willIterateForward = false;
+    switch (event.key) {
+      case "ArrowUp":
+      case "ArrowLeft": {
+        sectionToFocus = section.previousSibling() || section.lastSibling();
+        willIterateForward = false;
+        break;
+      }
+      case "ArrowDown":
+      case "ArrowRight": {
+        sectionToFocus = section.nextSibling() || section.firstSibling();
+        willIterateForward = true;
+        break;
+      }
+      case "Home": {
+        sectionToFocus = section.firstSibling();
+        willIterateForward = true;
+        break;
+      }
+      case "End": {
+        sectionToFocus = section.lastSibling();
+        willIterateForward = false;
+        break;
+      }
+    }
+    if (sectionToFocus && this.#filterRegex) {
+      sectionToFocus = sectionToFocus.findCurrentOrNextVisible(
+        /* willIterateForward= */
+        willIterateForward
+      );
+    }
+    if (sectionToFocus) {
+      sectionToFocus.element.focus();
+      event.consume(true);
+    }
+  }
+  sectionsContainerFocusChanged() {
+    this.resetFocus();
+  }
+  resetFocus() {
+    if (!this.noMatchesElement.classList.contains("hidden")) {
+      return;
+    }
+    if (this.sectionBlocks[0]?.sections[0]) {
+      const firstVisibleSection = this.sectionBlocks[0].sections[0].findCurrentOrNextVisible(
+        /* willIterateForward= */
+        true
+      );
+      if (firstVisibleSection) {
+        firstVisibleSection.element.tabIndex = this.sectionsContainer.hasFocus() ? -1 : 0;
+      }
+    }
+  }
+  onAddButtonLongClick(event) {
+    const cssModel = this.cssModel();
+    if (!cssModel) {
+      return;
+    }
+    const headers = cssModel.styleSheetHeaders().filter(styleSheetResourceHeader);
+    const contextMenuDescriptors = [];
+    for (let i = 0; i < headers.length; ++i) {
+      const header = headers[i];
+      const handler = this.createNewRuleInStyleSheet.bind(this, header);
+      contextMenuDescriptors.push({ text: Bindings.ResourceUtils.displayNameForURL(header.resourceURL()), handler });
+    }
+    contextMenuDescriptors.sort(compareDescriptors);
+    const contextMenu = new UI.ContextMenu.ContextMenu(event);
+    for (let i = 0; i < contextMenuDescriptors.length; ++i) {
+      const descriptor = contextMenuDescriptors[i];
+      contextMenu.defaultSection().appendItem(
+        descriptor.text,
+        descriptor.handler,
+        { jslogContext: "style-sheet-header" }
+      );
+    }
+    contextMenu.footerSection().appendItem(
+      "inspector-stylesheet",
+      this.createNewRuleInViaInspectorStyleSheet.bind(this),
+      { jslogContext: "inspector-stylesheet" }
+    );
+    void contextMenu.show();
+    function compareDescriptors(descriptor1, descriptor2) {
+      return Platform.StringUtilities.naturalOrderComparator(descriptor1.text, descriptor2.text);
+    }
+    function styleSheetResourceHeader(header) {
+      return !header.isViaInspector() && !header.isInline && Boolean(header.resourceURL());
+    }
+  }
+  #buildFilterRegex(text) {
+    if (!text) {
+      return null;
+    }
+    if (this.#isRegex) {
+      try {
+        return new RegExp(text, "i");
+      } catch {
+      }
+    }
+    return new RegExp(Platform.StringUtilities.escapeForRegExp(text), "i");
+  }
+  onFilterChanged(event) {
+    this.#filterText = event.data;
+    this.setFilter(this.#buildFilterRegex(event.data));
+  }
+  onRegexToggled() {
+    this.#isRegex = !this.#isRegex;
+    this.setFilter(this.#buildFilterRegex(this.#filterText));
+  }
+  setFilter(regex) {
+    this.lastFilterChange = Date.now();
+    this.#filterRegex = regex;
+    this.updateFilter();
+    this.resetFocus();
+    setTimeout(() => {
+      if (this.lastFilterChange) {
+        const stillTyping = Date.now() - this.lastFilterChange < FILTER_IDLE_PERIOD;
+        if (!stillTyping) {
+          UI.ARIAUtils.LiveAnnouncer.alert(
+            this.visibleSections ? i18nString(UIStrings.visibleSelectors, { n: this.visibleSections }) : i18nString(UIStrings.noMatchingSelectorOrStyle)
+          );
+        }
+      }
+    }, FILTER_IDLE_PERIOD);
+  }
+  refreshUpdate(editedSection, editedTreeElement) {
+    if (editedTreeElement) {
+      for (const section of this.allSections()) {
+        if (section instanceof BlankStylePropertiesSection && section.isBlank) {
+          continue;
+        }
+        section.updateVarFunctions(editedTreeElement);
+      }
+    }
+    if (this.isEditingStyle) {
+      return;
+    }
+    const node = this.node();
+    if (!node) {
+      return;
+    }
+    for (const section of this.allSections()) {
+      if (section instanceof BlankStylePropertiesSection && section.isBlank) {
+        continue;
+      }
+      section.update(section === editedSection);
+    }
+    if (this.#filterRegex) {
+      this.updateFilter();
+    }
+    this.swatchPopoverHelper().reposition();
+    this.nodeStylesUpdatedForTest(node, false);
+  }
+  async performUpdate() {
+    this.#updateAbortController?.abort();
+    this.#updateAbortController = new AbortController();
+    await this.#innerDoUpdate(this.#updateAbortController.signal);
+    const scrollerElementLists = this?.contentElement?.enclosingNodeOrSelfWithClass("style-panes-wrapper")?.parentElement?.querySelectorAll(".style-panes-wrapper");
+    if (scrollerElementLists.length > 0) {
+      for (const element of scrollerElementLists) {
+        this.scrollerElement = element;
+        this.scrollerElement.addEventListener("scroll", this.boundOnScroll, false);
+      }
+    }
+  }
+  async #innerDoUpdate(signal) {
+    if (!this.initialUpdateCompleted) {
+      window.setTimeout(
+        () => {
+          if (signal.aborted) {
+            return;
+          }
+          if (!this.initialUpdateCompleted) {
+            this.sectionsContainer.contentElement.createChild("span", "spinner");
+          }
+        },
+        200
+        /* only spin for loading time > 200ms to avoid unpleasant render flashes */
+      );
+    }
+    const matchedStyles = await this.fetchMatchedCascade();
+    if (signal.aborted) {
+      return;
+    }
+    this.matchedStyles = matchedStyles;
+    const nodeId = this.node()?.id;
+    const parentNodeId = this.matchedStyles?.getParentLayoutNodeId();
+    const [computedStyles, parentsComputedStyles, computedStyleExtraFields] = await Promise.all([
+      this.fetchComputedStylesFor(nodeId),
+      this.fetchComputedStylesFor(parentNodeId),
+      this.fetchComputedStyleExtraFieldsFor(nodeId)
+    ]);
+    if (signal.aborted) {
+      return;
+    }
+    await this.innerRebuildUpdate(
+      signal,
+      this.matchedStyles,
+      computedStyles,
+      parentsComputedStyles,
+      computedStyleExtraFields
+    );
+    if (signal.aborted) {
+      return;
+    }
+    if (!this.initialUpdateCompleted) {
+      this.initialUpdateCompleted = true;
+      this.appendToolbarItem(this.createRenderingShortcuts());
+      this.dispatchEventToListeners("InitialUpdateCompleted" /* INITIAL_UPDATE_COMPLETED */);
+    }
+    this.nodeStylesUpdatedForTest(this.node(), true);
+    this.dispatchEventToListeners("StylesUpdateCompleted" /* STYLES_UPDATE_COMPLETED */, { hasMatchedStyles: this.hasMatchedStyles });
+  }
+  #getRegisteredPropertyDetails(matchedStyles, variableName) {
+    const registration = matchedStyles.getRegisteredProperty(variableName);
+    const goToDefinition = () => this.jumpToSection(variableName, REGISTERED_PROPERTY_SECTION_NAME);
+    return registration ? { registration, goToDefinition } : void 0;
+  }
+  getVariableParserError(matchedStyles, variableName) {
+    const registrationDetails = this.#getRegisteredPropertyDetails(matchedStyles, variableName);
+    return registrationDetails ? new ElementsComponents.CSSVariableValueView.CSSVariableParserError(registrationDetails) : null;
+  }
+  getVariablePopoverContents(matchedStyles, variableName, computedValue) {
+    return new ElementsComponents.CSSVariableValueView.CSSVariableValueView({
+      variableName,
+      value: computedValue ?? void 0,
+      details: this.#getRegisteredPropertyDetails(matchedStyles, variableName)
+    });
+  }
+  async fetchComputedStylesFor(nodeId) {
+    const node = this.node();
+    if (node === null || nodeId === void 0) {
+      return null;
+    }
+    return await node.domModel().cssModel().getComputedStyle(nodeId);
+  }
+  async fetchComputedStyleExtraFieldsFor(nodeId) {
+    const node = this.node();
+    if (node === null || nodeId === void 0) {
+      return null;
+    }
+    return await node.domModel().cssModel().getComputedStyleExtraFields(nodeId);
+  }
+  onResize() {
+    void this.resizeThrottler.schedule(this.#resize.bind(this));
+  }
+  #resize() {
+    const width = this.contentElement.getBoundingClientRect().width + "px";
+    this.allSections().forEach((section) => {
+      section.propertiesTreeOutline.element.style.width = width;
+    });
+    this.hideAllPopovers();
+    return Promise.resolve();
+  }
+  resetCache() {
+    const cssModel = this.cssModel();
+    if (cssModel) {
+      cssModel.discardCachedMatchedCascade();
+    }
+  }
+  fetchMatchedCascade() {
+    const node = this.node();
+    if (!node || !this.cssModel()) {
+      return Promise.resolve(null);
+    }
+    const cssModel = this.cssModel();
+    if (!cssModel) {
+      return Promise.resolve(null);
+    }
+    return cssModel.cachedMatchedCascadeForNode(node).then(validateStyles.bind(this));
+    function validateStyles(matchedStyles) {
+      return matchedStyles && matchedStyles.node() === this.node() ? matchedStyles : null;
+    }
+  }
+  setEditingStyle(editing) {
+    if (this.isEditingStyle === editing) {
+      return;
+    }
+    this.contentElement.classList.toggle("is-editing-style", editing);
+    this.isEditingStyle = editing;
+    this.setActiveProperty(null);
+  }
+  setActiveProperty(treeElement) {
+    if (this.isActivePropertyHighlighted) {
+      SDK.OverlayModel.OverlayModel.hideDOMNodeHighlight();
+    }
+    this.isActivePropertyHighlighted = false;
+    if (!this.node()) {
+      return;
+    }
+    if (!treeElement || treeElement.overloaded() || treeElement.inherited()) {
+      return;
+    }
+    const rule = treeElement.property.ownerStyle.parentRule;
+    const selectorList = rule instanceof SDK.CSSRule.CSSStyleRule ? rule.selectorText() : void 0;
+    for (const { properties, mode } of HIGHLIGHTABLE_PROPERTIES) {
+      if (!properties.includes(treeElement.name)) {
+        continue;
+      }
+      const node = this.node();
+      if (!node) {
+        continue;
+      }
+      node.domModel().overlayModel().highlightInOverlay(
+        { node: this.node(), selectorList },
+        mode
+      );
+      this.isActivePropertyHighlighted = true;
+      break;
+    }
+  }
+  onCSSModelChanged(event) {
+    if (event?.data && "edit" in event.data && event.data.edit) {
+      return;
+    }
+    this.#resetUpdateIfNotEditing();
+  }
+  onComputedStyleChanged() {
+    if (!Root.Runtime.hostConfig.devToolsAnimationStylesInStylesTab?.enabled) {
+      return;
+    }
+    void this.computedStyleUpdateThrottler.schedule(async () => {
+      await this.#updateAnimatedStyles();
+      this.handledComputedStyleChangedForTest();
+    });
+  }
+  handledComputedStyleChangedForTest() {
+  }
+  #resetUpdateIfNotEditing() {
+    if (this.userOperation || this.isEditingStyle) {
+      return;
+    }
+    this.resetCache();
+    this.requestUpdate();
+  }
+  #scheduleResetUpdateIfNotEditing() {
+    this.scheduleResetUpdateIfNotEditingCalledForTest();
+    if (this.userOperation || this.isEditingStyle) {
+      return;
+    }
+    void this.resetUpdateThrottler.schedule(async () => {
+      this.#resetUpdateIfNotEditing();
+    });
+  }
+  scheduleResetUpdateIfNotEditingCalledForTest() {
+  }
+  #hasAnimatedStyles(animatedStyles) {
+    return Boolean(
+      animatedStyles.animationStyles?.length || animatedStyles.transitionsStyle?.cssProperties.length || animatedStyles.inherited?.some(
+        (inherited) => inherited.animationStyles?.length || inherited.transitionsStyle?.cssProperties.length
+      )
+    );
+  }
+  async #updateAnimatedStyles() {
+    if (!this.matchedStyles) {
+      return;
+    }
+    const nodeId = this.node()?.id;
+    if (!nodeId) {
+      return;
+    }
+    const animatedStyles = await this.cssModel()?.getAnimatedStylesForNode(nodeId);
+    if (!animatedStyles) {
+      return;
+    }
+    if (!this.#hasAnimatedStyles(animatedStyles)) {
+      this.#scheduleResetUpdateIfNotEditing();
+      return;
+    }
+    if (!UI.ViewManager.ViewManager.instance().isViewVisible("animations")) {
+      return;
+    }
+    const updateStyleSection = (currentStyle, newStyle) => {
+      if (newStyle) {
+        if (currentStyle?.allProperties().length !== newStyle.cssProperties.length) {
+          this.#scheduleResetUpdateIfNotEditing();
+          return;
+        }
+        currentStyle.allProperties().forEach((property, index) => {
+          const newProperty = newStyle.cssProperties[index];
+          if (!newProperty) {
+            return;
+          }
+          property.setLocalValue(newProperty.value);
+        });
+      } else if (currentStyle) {
+        this.#scheduleResetUpdateIfNotEditing();
+        return;
+      }
+    };
+    updateStyleSection(this.matchedStyles.transitionsStyle() ?? null, animatedStyles.transitionsStyle ?? null);
+    const animationStyles = this.matchedStyles.animationStyles() ?? [];
+    const animationStylesPayload = animatedStyles.animationStyles ?? [];
+    if (animationStyles.length !== animationStylesPayload.length) {
+      this.#scheduleResetUpdateIfNotEditing();
+      return;
+    }
+    for (let i = 0; i < animationStyles.length; i++) {
+      const currentAnimationStyle = animationStyles[i];
+      const nextAnimationStyle = animationStylesPayload[i].style;
+      updateStyleSection(currentAnimationStyle ?? null, nextAnimationStyle);
+    }
+    const inheritedStyles = this.matchedStyles.inheritedStyles() ?? [];
+    const currentInheritedTransitionsStyles = inheritedStyles.filter((style) => style.type === SDK.CSSStyleDeclaration.Type.Transition);
+    const newInheritedTransitionsStyles = animatedStyles.inherited?.map((inherited) => inherited.transitionsStyle).filter(
+      (style) => style?.cssProperties.some(
+        (cssProperty) => SDK.CSSMetadata.cssMetadata().isPropertyInherited(cssProperty.name)
+      )
+    ) ?? [];
+    if (currentInheritedTransitionsStyles.length !== newInheritedTransitionsStyles.length) {
+      this.#scheduleResetUpdateIfNotEditing();
+      return;
+    }
+    for (let i = 0; i < currentInheritedTransitionsStyles.length; i++) {
+      const currentInheritedTransitionsStyle = currentInheritedTransitionsStyles[i];
+      const newInheritedTransitionsStyle = newInheritedTransitionsStyles[i];
+      updateStyleSection(currentInheritedTransitionsStyle, newInheritedTransitionsStyle ?? null);
+    }
+    const currentInheritedAnimationsStyles = inheritedStyles.filter((style) => style.type === SDK.CSSStyleDeclaration.Type.Animation);
+    const newInheritedAnimationsStyles = animatedStyles.inherited?.flatMap((inherited) => inherited.animationStyles).filter(
+      (animationStyle) => animationStyle?.style.cssProperties.some(
+        (cssProperty) => SDK.CSSMetadata.cssMetadata().isPropertyInherited(cssProperty.name)
+      )
+    ) ?? [];
+    if (currentInheritedAnimationsStyles.length !== newInheritedAnimationsStyles.length) {
+      this.#scheduleResetUpdateIfNotEditing();
+      return;
+    }
+    for (let i = 0; i < currentInheritedAnimationsStyles.length; i++) {
+      const currentInheritedAnimationsStyle = currentInheritedAnimationsStyles[i];
+      const newInheritedAnimationsStyle = newInheritedAnimationsStyles[i]?.style;
+      updateStyleSection(currentInheritedAnimationsStyle, newInheritedAnimationsStyle ?? null);
+    }
+  }
+  focusedSectionIndex() {
+    let index = 0;
+    for (const block of this.sectionBlocks) {
+      for (const section of block.sections) {
+        if (section.element.hasFocus()) {
+          return index;
+        }
+        index++;
+      }
+    }
+    return -1;
+  }
+  continueEditingElement(sectionIndex, propertyIndex) {
+    const section = this.allSections()[sectionIndex];
+    if (section) {
+      const element = section.closestPropertyForEditing(propertyIndex);
+      if (!element) {
+        section.element.focus();
+        return;
+      }
+      element.startEditingName();
+    }
+  }
+  async innerRebuildUpdate(signal, matchedStyles, computedStyles, parentsComputedStyles, computedStyleExtraFields) {
+    if (this.needsForceUpdate) {
+      this.needsForceUpdate = false;
+    } else if (this.isEditingStyle || this.userOperation) {
+      return;
+    }
+    const focusedIndex = this.focusedSectionIndex();
+    this.linkifier.reset();
+    const prevSections = this.sectionBlocks.map((block) => block.sections).flat();
+    for (const section of prevSections) {
+      section.dispose();
+    }
+    this.sectionBlocks = [];
+    const node = this.node();
+    this.hasMatchedStyles = matchedStyles !== null && node !== null;
+    if (!this.hasMatchedStyles) {
+      this.sectionsContainer.contentElement.removeChildren();
+      this.sectionsContainer.detachChildWidgets();
+      this.noMatchesElement.classList.remove("hidden");
+      return;
+    }
+    const blocks = await this.rebuildSectionsForMatchedStyleRules(
+      matchedStyles,
+      computedStyles,
+      parentsComputedStyles,
+      computedStyleExtraFields
+    );
+    if (signal.aborted) {
+      return;
+    }
+    this.sectionBlocks = blocks;
+    const newSections = this.sectionBlocks.map((block) => block.sections).flat();
+    const styleEditorWidget = StyleEditorWidget.instance();
+    const boundSection = styleEditorWidget.getSection();
+    if (boundSection) {
+      styleEditorWidget.unbindContext();
+      for (const [index2, prevSection] of prevSections.entries()) {
+        if (boundSection === prevSection && index2 < newSections.length) {
+          styleEditorWidget.bindContext(this, newSections[index2]);
+        }
+      }
+    }
+    this.sectionsContainer.contentElement.removeChildren();
+    this.sectionsContainer.detachChildWidgets();
+    const fragment = document.createDocumentFragment();
+    let index = 0;
+    let elementToFocus = null;
+    for (const block of this.sectionBlocks) {
+      const titleElement = block.titleElement();
+      if (titleElement) {
+        fragment.appendChild(titleElement);
+      }
+      for (const section of block.sections) {
+        fragment.appendChild(section.element);
+        if (index === focusedIndex) {
+          elementToFocus = section.element;
+        }
+        index++;
+      }
+    }
+    this.sectionsContainer.contentElement.appendChild(fragment);
+    if (elementToFocus) {
+      elementToFocus.focus();
+    }
+    if (focusedIndex >= index) {
+      this.sectionBlocks[0].sections[0].element.focus();
+    }
+    this.sectionsContainerFocusChanged();
+    if (this.#filterRegex) {
+      this.updateFilter();
+    } else {
+      this.noMatchesElement.classList.toggle("hidden", this.sectionBlocks.length > 0);
+    }
+    if (this.lastRevealedProperty) {
+      void this.decorator.highlightProperty(this.lastRevealedProperty);
+      this.lastRevealedProperty = null;
+    }
+    this.swatchPopoverHelper().reposition();
+    Host.userMetrics.panelLoaded("elements", "DevTools.Launch.Elements");
+    this.dispatchEventToListeners("StylesUpdateCompleted" /* STYLES_UPDATE_COMPLETED */, { hasMatchedStyles: false });
+  }
+  nodeStylesUpdatedForTest(_node, _rebuild) {
+  }
+  setMatchedStylesForTest(matchedStyles) {
+    this.matchedStyles = matchedStyles;
+  }
+  rebuildSectionsForMatchedStyleRulesForTest(matchedStyles, computedStyles, parentsComputedStyles, computedStyleExtraFields) {
+    return this.rebuildSectionsForMatchedStyleRules(
+      matchedStyles,
+      computedStyles,
+      parentsComputedStyles,
+      computedStyleExtraFields
+    );
+  }
+  async rebuildSectionsForMatchedStyleRules(matchedStyles, computedStyles, parentsComputedStyles, computedStyleExtraFields) {
+    if (this.idleCallbackManager) {
+      this.idleCallbackManager.discard();
+    }
+    this.idleCallbackManager = new IdleCallbackManager();
+    const blocks = [new SectionBlock(null)];
+    let sectionIdx = 0;
+    let lastParentNode = null;
+    let lastLayerParent;
+    let lastLayers = null;
+    let sawLayers = false;
+    const addLayerSeparator = (style) => {
+      const parentRule = style.parentRule;
+      if (parentRule instanceof SDK.CSSRule.CSSStyleRule) {
+        const layers = parentRule.layers;
+        if ((layers.length || lastLayers) && lastLayers !== layers) {
+          const block = SectionBlock.createLayerBlock(parentRule);
+          blocks.push(block);
+          lastLayerParent?.childBlocks.push(block);
+          sawLayers = true;
+          lastLayers = layers;
+        }
+      }
+    };
+    LayersWidget.ButtonProvider.instance().item().setVisible(false);
+    const animationsPanelVisible = UI.ViewManager.ViewManager.instance().isViewVisible("animations");
+    for (const style of matchedStyles.nodeStyles()) {
+      const isTransitionOrAnimationStyle = style.type === SDK.CSSStyleDeclaration.Type.Transition || style.type === SDK.CSSStyleDeclaration.Type.Animation;
+      if (isTransitionOrAnimationStyle && !animationsPanelVisible) {
+        continue;
+      }
+      const parentNode = matchedStyles.isInherited(style) ? matchedStyles.nodeForStyle(style) : null;
+      if (parentNode && parentNode !== lastParentNode) {
+        lastParentNode = parentNode;
+        const block = await SectionBlock.createInheritedNodeBlock(lastParentNode);
+        lastLayerParent = block;
+        blocks.push(block);
+      }
+      addLayerSeparator(style);
+      const lastBlock = blocks[blocks.length - 1];
+      if (lastBlock && (!isTransitionOrAnimationStyle || style.allProperties().length > 0)) {
+        this.idleCallbackManager.schedule(() => {
+          const section = new StylePropertiesSection(
+            this,
+            matchedStyles,
+            style,
+            sectionIdx,
+            computedStyles,
+            parentsComputedStyles,
+            computedStyleExtraFields
+          );
+          sectionIdx++;
+          lastBlock.sections.push(section);
+        });
+      }
+    }
+    lastLayerParent = void 0;
+    const customHighlightPseudoRulesets = Array.from(matchedStyles.customHighlightPseudoNames()).map((highlightName) => {
+      return {
+        highlightName,
+        pseudoType: Protocol.DOM.PseudoType.Highlight,
+        pseudoStyles: matchedStyles.customHighlightPseudoStyles(highlightName)
+      };
+    });
+    const otherPseudoRulesets = [...matchedStyles.pseudoTypes()].map((pseudoType) => {
+      return { highlightName: null, pseudoType, pseudoStyles: matchedStyles.pseudoStyles(pseudoType) };
+    });
+    const pseudoRulesets = customHighlightPseudoRulesets.concat(otherPseudoRulesets).sort((a, b) => {
+      if (a.pseudoType === Protocol.DOM.PseudoType.Before && b.pseudoType !== Protocol.DOM.PseudoType.Before) {
+        return -1;
+      }
+      if (a.pseudoType !== Protocol.DOM.PseudoType.Before && b.pseudoType === Protocol.DOM.PseudoType.Before) {
+        return 1;
+      }
+      if (a.pseudoType < b.pseudoType) {
+        return -1;
+      }
+      if (a.pseudoType > b.pseudoType) {
+        return 1;
+      }
+      return 0;
+    });
+    for (const pseudo of pseudoRulesets) {
+      lastParentNode = null;
+      for (let i = 0; i < pseudo.pseudoStyles.length; ++i) {
+        const style = pseudo.pseudoStyles[i];
+        const parentNode = matchedStyles.isInherited(style) ? matchedStyles.nodeForStyle(style) : null;
+        if (i === 0 || parentNode !== lastParentNode) {
+          lastLayers = null;
+          if (parentNode) {
+            const block = await SectionBlock.createInheritedPseudoTypeBlock(pseudo.pseudoType, pseudo.highlightName, parentNode);
+            lastLayerParent = block;
+            blocks.push(block);
+          } else {
+            const block = SectionBlock.createPseudoTypeBlock(pseudo.pseudoType, pseudo.highlightName);
+            lastLayerParent = block;
+            blocks.push(block);
+          }
+        }
+        lastParentNode = parentNode;
+        addLayerSeparator(style);
+        const lastBlock = blocks[blocks.length - 1];
+        this.idleCallbackManager.schedule(() => {
+          const section = new HighlightPseudoStylePropertiesSection(
+            this,
+            matchedStyles,
+            style,
+            sectionIdx,
+            computedStyles,
+            parentsComputedStyles,
+            computedStyleExtraFields
+          );
+          sectionIdx++;
+          lastBlock.sections.push(section);
+        });
+      }
+    }
+    for (const keyframesRule of matchedStyles.keyframes()) {
+      const block = SectionBlock.createKeyframesBlock(keyframesRule.name().text);
+      for (const keyframe of keyframesRule.keyframes()) {
+        this.idleCallbackManager.schedule(() => {
+          block.sections.push(new KeyframePropertiesSection(this, matchedStyles, keyframe.style, sectionIdx));
+          sectionIdx++;
+        });
+      }
+      blocks.push(block);
+    }
+    const atRules = matchedStyles.atRules();
+    if (atRules.length > 0) {
+      const expandedByDefault = atRules.length <= MIN_FOLDED_SECTIONS_COUNT;
+      const block = SectionBlock.createAtRuleBlock(expandedByDefault);
+      for (const atRule of atRules) {
+        this.idleCallbackManager.schedule(() => {
+          block.sections.push(new AtRuleSection(this, matchedStyles, atRule.style, sectionIdx, expandedByDefault));
+          sectionIdx++;
+        });
+      }
+      blocks.push(block);
+    }
+    for (const positionTryRule of matchedStyles.positionTryRules()) {
+      const block = SectionBlock.createPositionTryBlock(positionTryRule.name().text);
+      this.idleCallbackManager.schedule(() => {
+        block.sections.push(new PositionTryRuleSection(
+          this,
+          matchedStyles,
+          positionTryRule.style,
+          sectionIdx,
+          positionTryRule.active()
+        ));
+        sectionIdx++;
+      });
+      blocks.push(block);
+    }
+    if (matchedStyles.registeredProperties().length > 0) {
+      const expandedByDefault = matchedStyles.registeredProperties().length <= MIN_FOLDED_SECTIONS_COUNT;
+      const block = SectionBlock.createRegisteredPropertiesBlock(expandedByDefault);
+      for (const propertyRule of matchedStyles.registeredProperties()) {
+        this.idleCallbackManager.schedule(() => {
+          block.sections.push(new RegisteredPropertiesSection(
+            this,
+            matchedStyles,
+            propertyRule.style(),
+            sectionIdx,
+            propertyRule.propertyName(),
+            expandedByDefault
+          ));
+          sectionIdx++;
+        });
+      }
+      blocks.push(block);
+    }
+    if (matchedStyles.functionRules().length > 0) {
+      const expandedByDefault = matchedStyles.functionRules().length <= MIN_FOLDED_SECTIONS_COUNT;
+      const block = SectionBlock.createFunctionBlock(expandedByDefault);
+      for (const functionRule of matchedStyles.functionRules()) {
+        this.idleCallbackManager.schedule(() => {
+          block.sections.push(new FunctionRuleSection(
+            this,
+            matchedStyles,
+            functionRule.style,
+            functionRule.children(),
+            sectionIdx,
+            functionRule.nameWithParameters(),
+            expandedByDefault
+          ));
+          sectionIdx++;
+        });
+      }
+      blocks.push(block);
+    }
+    if (sawLayers) {
+      LayersWidget.ButtonProvider.instance().item().setVisible(true);
+    } else if (LayersWidget.LayersWidget.instance().isShowing()) {
+      ElementsPanel.instance().showToolbarPane(null, LayersWidget.ButtonProvider.instance().item());
+    }
+    await this.idleCallbackManager.awaitDone();
+    return blocks;
+  }
+  async createNewRuleInViaInspectorStyleSheet() {
+    const cssModel = this.cssModel();
+    const node = this.node();
+    if (!cssModel || !node) {
+      return;
+    }
+    this.setUserOperation(true);
+    const styleSheetHeader = await cssModel.requestViaInspectorStylesheet(node.frameId());
+    this.setUserOperation(false);
+    await this.createNewRuleInStyleSheet(styleSheetHeader);
+  }
+  async createNewRuleInStyleSheet(styleSheetHeader) {
+    if (!styleSheetHeader) {
+      return;
+    }
+    const contentDataOrError = await styleSheetHeader.requestContentData();
+    const lines = TextUtils.ContentData.ContentData.textOr(contentDataOrError, "").split("\n");
+    const range = TextUtils.TextRange.TextRange.createFromLocation(lines.length - 1, lines[lines.length - 1].length);
+    if (this.sectionBlocks && this.sectionBlocks.length > 0) {
+      this.addBlankSection(this.sectionBlocks[0].sections[0], styleSheetHeader, range);
+    }
+  }
+  addBlankSection(insertAfterSection, styleSheetHeader, ruleLocation) {
+    const node = this.node();
+    const blankSection = new BlankStylePropertiesSection(
+      this,
+      insertAfterSection.matchedStyles,
+      node ? node.simpleSelector() : "",
+      styleSheetHeader,
+      ruleLocation,
+      insertAfterSection.style(),
+      0
+    );
+    this.sectionsContainer.contentElement.insertBefore(blankSection.element, insertAfterSection.element.nextSibling);
+    for (const block of this.sectionBlocks) {
+      const index = block.sections.indexOf(insertAfterSection);
+      if (index === -1) {
+        continue;
+      }
+      block.sections.splice(index + 1, 0, blankSection);
+      blankSection.startEditingSelector();
+    }
+    let sectionIdx = 0;
+    for (const block of this.sectionBlocks) {
+      for (const section of block.sections) {
+        section.setSectionIdx(sectionIdx);
+        sectionIdx++;
+      }
+    }
+  }
+  removeSection(section) {
+    for (const block of this.sectionBlocks) {
+      const index = block.sections.indexOf(section);
+      if (index === -1) {
+        continue;
+      }
+      block.sections.splice(index, 1);
+      section.element.remove();
+    }
+  }
+  filterRegex() {
+    return this.#filterRegex;
+  }
+  updateFilter() {
+    let hasAnyVisibleBlock = false;
+    let visibleSections = 0;
+    for (const block of this.sectionBlocks) {
+      visibleSections += block.updateFilter();
+      hasAnyVisibleBlock = Boolean(visibleSections) || hasAnyVisibleBlock;
+    }
+    this.noMatchesElement.classList.toggle("hidden", Boolean(hasAnyVisibleBlock));
+    this.visibleSections = visibleSections;
+  }
+  wasShown() {
+    UI.Context.Context.instance().setFlavor(StylesSidebarPane, this);
+    super.wasShown();
+  }
+  willHide() {
+    this.hideAllPopovers();
+    super.willHide();
+    UI.Context.Context.instance().setFlavor(StylesSidebarPane, null);
+  }
+  hideAllPopovers() {
+    this.#swatchPopoverHelper.hide();
+    this.imagePreviewPopover.hide();
+    if (this.activeCSSAngle) {
+      this.activeCSSAngle.minify();
+      this.activeCSSAngle = null;
+    }
+  }
+  getSectionBlockByName(name) {
+    return this.sectionBlocks.find((block) => block.titleElement()?.textContent === name);
+  }
+  allSections() {
+    let sections = [];
+    for (const block of this.sectionBlocks) {
+      sections = sections.concat(block.sections);
+    }
+    return sections;
+  }
+  clipboardCopy(_event) {
+    Host.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleCopied);
+  }
+  createStylesSidebarToolbar() {
+    const container = this.contentElement.createChild("div", "styles-sidebar-pane-toolbar-container");
+    container.role = "toolbar";
+    const hbox = container.createChild("div", "hbox styles-sidebar-pane-toolbar");
+    const toolbar = hbox.createChild("devtools-toolbar", "styles-pane-toolbar");
+    toolbar.role = "presentation";
+    const filterInput = new UI.Toolbar.ToolbarFilter(
+      void 0,
+      1,
+      1,
+      void 0,
+      void 0,
+      false,
+      void 0,
+      void 0,
+      /* showRegexToggle=*/
+      true,
+      this.onRegexToggled.bind(this)
+    );
+    filterInput.addEventListener(UI.Toolbar.ToolbarInput.Event.TEXT_CHANGED, this.onFilterChanged, this);
+    toolbar.appendToolbarItem(filterInput);
+    void toolbar.appendItemsAtLocation("styles-sidebarpane-toolbar");
+    this.toolbar = toolbar;
+    const toolbarPaneContainer = container.createChild("div", "styles-sidebar-toolbar-pane-container");
+    const toolbarPaneContent = toolbarPaneContainer.createChild("div", "styles-sidebar-toolbar-pane");
+    return toolbarPaneContent;
+  }
+  showToolbarPane(widget, toggle) {
+    if (this.pendingWidgetToggle) {
+      this.pendingWidgetToggle.setToggled(false);
+    }
+    this.pendingWidgetToggle = toggle;
+    if (this.animatedToolbarPane) {
+      this.pendingWidget = widget;
+    } else {
+      this.startToolbarPaneAnimation(widget);
+    }
+    if (widget && toggle) {
+      toggle.setToggled(true);
+    }
+  }
+  appendToolbarItem(item) {
+    if (this.toolbar) {
+      this.toolbar.appendToolbarItem(item);
+    }
+  }
+  addStyleUpdateListener(listener) {
+    this.addEventListener("StylesUpdateCompleted" /* STYLES_UPDATE_COMPLETED */, listener);
+  }
+  removeStyleUpdateListener(listener) {
+    this.removeEventListener("StylesUpdateCompleted" /* STYLES_UPDATE_COMPLETED */, listener);
+  }
+  startToolbarPaneAnimation(widget) {
+    if (widget === this.currentToolbarPane) {
+      return;
+    }
+    if (widget && this.currentToolbarPane) {
+      this.currentToolbarPane.detach();
+      widget.show(this.toolbarPaneElement);
+      this.currentToolbarPane = widget;
+      this.currentToolbarPane.focus();
+      return;
+    }
+    this.animatedToolbarPane = widget;
+    if (this.currentToolbarPane) {
+      this.toolbarPaneElement.style.animationName = "styles-element-state-pane-slideout";
+    } else if (widget) {
+      this.toolbarPaneElement.style.animationName = "styles-element-state-pane-slidein";
+    }
+    if (widget) {
+      widget.show(this.toolbarPaneElement);
+    }
+    const listener = onAnimationEnd.bind(this);
+    this.toolbarPaneElement.addEventListener("animationend", listener, false);
+    function onAnimationEnd() {
+      this.toolbarPaneElement.style.removeProperty("animation-name");
+      this.toolbarPaneElement.removeEventListener("animationend", listener, false);
+      if (this.currentToolbarPane) {
+        this.currentToolbarPane.detach();
+      }
+      this.currentToolbarPane = this.animatedToolbarPane;
+      if (this.currentToolbarPane) {
+        this.currentToolbarPane.focus();
+      }
+      this.animatedToolbarPane = null;
+      if (this.pendingWidget) {
+        this.startToolbarPaneAnimation(this.pendingWidget);
+        this.pendingWidget = null;
+      }
+    }
+  }
+  createRenderingShortcuts() {
+    const prefersColorSchemeSetting = Common.Settings.Settings.instance().moduleSetting("emulated-css-media-feature-prefers-color-scheme");
+    const autoDarkModeSetting = Common.Settings.Settings.instance().moduleSetting("emulate-auto-dark-mode");
+    const decorateStatus = (condition, title) => `${condition ? "\u2713 " : ""}${title}`;
+    const button = new UI.Toolbar.ToolbarToggle(
+      i18nString(UIStrings.toggleRenderingEmulations),
+      "brush",
+      "brush-filled",
+      void 0,
+      false
+    );
+    button.element.setAttribute("jslog", `${VisualLogging.dropDown("rendering-emulations").track({ click: true })}`);
+    button.element.addEventListener("click", (event) => {
+      const boundingRect = button.element.getBoundingClientRect();
+      const menu = new UI.ContextMenu.ContextMenu(event, {
+        x: boundingRect.left,
+        y: boundingRect.bottom
+      });
+      const preferredColorScheme = prefersColorSchemeSetting.get();
+      const isLightColorScheme = preferredColorScheme === "light";
+      const isDarkColorScheme = preferredColorScheme === "dark";
+      const isAutoDarkEnabled = autoDarkModeSetting.get();
+      const lightColorSchemeOption = decorateStatus(isLightColorScheme, "prefers-color-scheme: light");
+      const darkColorSchemeOption = decorateStatus(isDarkColorScheme, "prefers-color-scheme: dark");
+      const autoDarkModeOption = decorateStatus(isAutoDarkEnabled, i18nString(UIStrings.automaticDarkMode));
+      menu.defaultSection().appendItem(lightColorSchemeOption, () => {
+        autoDarkModeSetting.set(false);
+        prefersColorSchemeSetting.set(isLightColorScheme ? "" : "light");
+        button.setToggled(Boolean(prefersColorSchemeSetting.get()));
+      }, { jslogContext: "prefer-light-color-scheme" });
+      menu.defaultSection().appendItem(darkColorSchemeOption, () => {
+        autoDarkModeSetting.set(false);
+        prefersColorSchemeSetting.set(isDarkColorScheme ? "" : "dark");
+        button.setToggled(Boolean(prefersColorSchemeSetting.get()));
+      }, { jslogContext: "prefer-dark-color-scheme" });
+      menu.defaultSection().appendItem(autoDarkModeOption, () => {
+        autoDarkModeSetting.set(!isAutoDarkEnabled);
+        button.setToggled(Boolean(prefersColorSchemeSetting.get()));
+      }, { jslogContext: "emulate-auto-dark-mode" });
+      void menu.show();
+      event.stopPropagation();
+    }, { capture: true });
+    return button;
+  }
+}
+export var Events = /* @__PURE__ */ ((Events2) => {
+  Events2["INITIAL_UPDATE_COMPLETED"] = "InitialUpdateCompleted";
+  Events2["STYLES_UPDATE_COMPLETED"] = "StylesUpdateCompleted";
+  return Events2;
+})(Events || {});
+const MAX_LINK_LENGTH = 23;
+export class SectionBlock {
+  #titleElement;
+  sections;
+  childBlocks = [];
+  #expanded = false;
+  #icon;
+  constructor(titleElement, expandable, expandedByDefault) {
+    this.#titleElement = titleElement;
+    this.sections = [];
+    this.#expanded = expandedByDefault ?? false;
+    if (expandable && titleElement instanceof HTMLElement) {
+      this.#icon = createIcon(this.#expanded ? "triangle-down" : "triangle-right", "section-block-expand-icon");
+      titleElement.classList.toggle("empty-section", !this.#expanded);
+      UI.ARIAUtils.setExpanded(titleElement, this.#expanded);
+      titleElement.appendChild(this.#icon);
+      titleElement.tabIndex = -1;
+      titleElement.addEventListener("click", () => this.expand(!this.#expanded), false);
+    }
+  }
+  expand(expand) {
+    if (!this.#titleElement || !this.#icon) {
+      return;
+    }
+    this.#titleElement.classList.toggle("empty-section", !expand);
+    this.#icon.name = expand ? "triangle-down" : "triangle-right";
+    UI.ARIAUtils.setExpanded(this.#titleElement, expand);
+    this.#expanded = expand;
+    this.sections.forEach((section) => section.element.classList.toggle("hidden", !expand));
+  }
+  static createPseudoTypeBlock(pseudoType, pseudoArgument) {
+    const separatorElement = document.createElement("div");
+    separatorElement.className = "sidebar-separator";
+    separatorElement.setAttribute("jslog", `${VisualLogging.sectionHeader("pseudotype")}`);
+    const pseudoArgumentString = pseudoArgument ? `(${pseudoArgument})` : "";
+    const pseudoTypeString = `${pseudoType}${pseudoArgumentString}`;
+    separatorElement.textContent = i18nString(UIStrings.pseudoSElement, { PH1: pseudoTypeString });
+    return new SectionBlock(separatorElement);
+  }
+  static async createInheritedPseudoTypeBlock(pseudoType, pseudoArgument, node) {
+    const separatorElement = document.createElement("div");
+    separatorElement.className = "sidebar-separator";
+    separatorElement.setAttribute("jslog", `${VisualLogging.sectionHeader("inherited-pseudotype")}`);
+    const pseudoArgumentString = pseudoArgument ? `(${pseudoArgument})` : "";
+    const pseudoTypeString = `${pseudoType}${pseudoArgumentString}`;
+    UI.UIUtils.createTextChild(separatorElement, i18nString(UIStrings.inheritedFromSPseudoOf, { PH1: pseudoTypeString }));
+    const link = PanelsCommon.DOMLinkifier.Linkifier.instance().linkify(node, {
+      preventKeyboardFocus: true
+    });
+    separatorElement.appendChild(link);
+    return new SectionBlock(separatorElement);
+  }
+  static createRegisteredPropertiesBlock(expandedByDefault) {
+    const separatorElement = document.createElement("div");
+    const block = new SectionBlock(separatorElement, true, expandedByDefault);
+    separatorElement.className = "sidebar-separator";
+    separatorElement.appendChild(document.createTextNode(REGISTERED_PROPERTY_SECTION_NAME));
+    return block;
+  }
+  static createFunctionBlock(expandedByDefault) {
+    const separatorElement = document.createElement("div");
+    const block = new SectionBlock(separatorElement, true, expandedByDefault);
+    separatorElement.className = "sidebar-separator";
+    separatorElement.appendChild(document.createTextNode(FUNCTION_SECTION_NAME));
+    return block;
+  }
+  static createKeyframesBlock(keyframesName) {
+    const separatorElement = document.createElement("div");
+    separatorElement.className = "sidebar-separator";
+    separatorElement.setAttribute("jslog", `${VisualLogging.sectionHeader("keyframes")}`);
+    separatorElement.textContent = `@keyframes ${keyframesName}`;
+    return new SectionBlock(separatorElement);
+  }
+  static createAtRuleBlock(expandedByDefault) {
+    const separatorElement = document.createElement("div");
+    const block = new SectionBlock(separatorElement, true, expandedByDefault);
+    separatorElement.className = "sidebar-separator";
+    separatorElement.appendChild(document.createTextNode(AT_RULE_SECTION_NAME));
+    return block;
+  }
+  static createPositionTryBlock(positionTryName) {
+    const separatorElement = document.createElement("div");
+    separatorElement.className = "sidebar-separator";
+    separatorElement.setAttribute("jslog", `${VisualLogging.sectionHeader("position-try")}`);
+    separatorElement.textContent = `@position-try ${positionTryName}`;
+    return new SectionBlock(separatorElement);
+  }
+  static async createInheritedNodeBlock(node) {
+    const separatorElement = document.createElement("div");
+    separatorElement.className = "sidebar-separator";
+    separatorElement.setAttribute("jslog", `${VisualLogging.sectionHeader("inherited")}`);
+    UI.UIUtils.createTextChild(separatorElement, i18nString(UIStrings.inheritedFroms));
+    const link = PanelsCommon.DOMLinkifier.Linkifier.instance().linkify(node, {
+      preventKeyboardFocus: true
+    });
+    separatorElement.appendChild(link);
+    return new SectionBlock(separatorElement);
+  }
+  static createLayerBlock(rule) {
+    const separatorElement = document.createElement("div");
+    separatorElement.className = "sidebar-separator layer-separator";
+    separatorElement.setAttribute("jslog", `${VisualLogging.sectionHeader("layer")}`);
+    UI.UIUtils.createTextChild(separatorElement.createChild("div"), i18nString(UIStrings.layer));
+    const layers = rule.layers;
+    if (!layers.length && rule.origin === Protocol.CSS.StyleSheetOrigin.UserAgent) {
+      const name2 = rule.origin === Protocol.CSS.StyleSheetOrigin.UserAgent ? "\xA0user\xA0agent\xA0stylesheet" : "\xA0implicit\xA0outer\xA0layer";
+      UI.UIUtils.createTextChild(separatorElement.createChild("div"), name2);
+      return new SectionBlock(separatorElement);
+    }
+    const layerLink = separatorElement.createChild("button");
+    layerLink.className = "link";
+    layerLink.title = i18nString(UIStrings.clickToRevealLayer);
+    const name = layers.map((layer) => SDK.CSSModel.CSSModel.readableLayerName(layer.text)).join(".");
+    layerLink.textContent = name;
+    layerLink.onclick = () => LayersWidget.LayersWidget.instance().revealLayer(name);
+    return new SectionBlock(separatorElement);
+  }
+  updateFilter() {
+    let numVisibleSections = 0;
+    for (const childBlock of this.childBlocks) {
+      numVisibleSections += childBlock.updateFilter();
+    }
+    for (const section of this.sections) {
+      numVisibleSections += section.updateFilter() ? 1 : 0;
+    }
+    if (this.#titleElement) {
+      this.#titleElement.classList.toggle("hidden", numVisibleSections === 0);
+    }
+    return numVisibleSections;
+  }
+  titleElement() {
+    return this.#titleElement;
+  }
+}
+export class IdleCallbackManager {
+  discarded;
+  promises;
+  queue;
+  constructor() {
+    this.discarded = false;
+    this.promises = [];
+    this.queue = [];
+  }
+  discard() {
+    this.discarded = true;
+  }
+  schedule(fn) {
+    if (this.discarded) {
+      return;
+    }
+    const promise = new Promise((resolve, reject) => {
+      this.queue.push({ fn, resolve, reject });
+    });
+    this.promises.push(promise);
+    this.scheduleIdleCallback(
+      /* timeout=*/
+      100
+    );
+  }
+  scheduleIdleCallback(timeout) {
+    window.requestIdleCallback(() => {
+      const next = this.queue.shift();
+      assertNotNullOrUndefined(next);
+      try {
+        if (!this.discarded) {
+          next.fn();
+        }
+        next.resolve();
+      } catch (err) {
+        next.reject(err);
+      }
+    }, { timeout });
+  }
+  awaitDone() {
+    return Promise.all(this.promises);
+  }
+}
+export function quoteFamilyName(familyName) {
+  return `'${familyName.replaceAll("'", "\\'")}'`;
+}
+export class CSSPropertyPrompt extends UI.TextPrompt.TextPrompt {
+  isColorAware;
+  cssCompletions;
+  selectedNodeComputedStyles;
+  parentNodeComputedStyles;
+  treeElement;
+  isEditingName;
+  cssVariables;
+  aiCodeCompletionConfig;
+  aiCodeCompletionProvider;
+  #debouncedTriggerAiCodeCompletion = Common.Debouncer.debounce(() => {
+    void this.triggerAiCodeCompletion();
+  }, TextEditor.AiCodeCompletionProvider.AIDA_REQUEST_DEBOUNCE_TIMEOUT_MS);
+  constructor(treeElement, isEditingName, completions = []) {
+    super();
+    this.initialize(this.buildPropertyCompletions.bind(this), UI.UIUtils.StyleValueDelimiters);
+    const cssMetadata = SDK.CSSMetadata.cssMetadata();
+    this.isColorAware = SDK.CSSMetadata.cssMetadata().isColorAwareProperty(treeElement.property.name);
+    this.cssCompletions = [];
+    const node = treeElement.node();
+    if (isEditingName) {
+      this.cssCompletions = cssMetadata.allProperties();
+      if (node && !node.isSVGNode()) {
+        this.cssCompletions = this.cssCompletions.filter((property) => !cssMetadata.isSVGProperty(property));
+      }
+    } else {
+      this.cssCompletions = [...completions, ...cssMetadata.getPropertyValues(treeElement.property.name)];
+      if (node && cssMetadata.isFontFamilyProperty(treeElement.property.name)) {
+        const fontFamilies = node.domModel().cssModel().fontFaces().map((font) => quoteFamilyName(font.getFontFamily()));
+        this.cssCompletions.unshift(...fontFamilies);
+      }
+    }
+    this.selectedNodeComputedStyles = null;
+    this.parentNodeComputedStyles = null;
+    this.treeElement = treeElement;
+    this.isEditingName = isEditingName;
+    this.cssVariables = treeElement.matchedStyles().availableCSSVariables(treeElement.property.ownerStyle);
+    if (this.cssVariables.length < 1e3) {
+      this.cssVariables.sort(Platform.StringUtilities.naturalOrderComparator);
+    } else {
+      this.cssVariables.sort();
+    }
+    if (!isEditingName) {
+      this.disableDefaultSuggestionForEmptyInput();
+      if (treeElement?.valueElement) {
+        const cssValueText = treeElement.valueElement.textContent;
+        const cmdOrCtrl = Host.Platform.isMac() ? "Cmd" : "Ctrl";
+        const optionOrAlt = Host.Platform.isMac() ? "Option" : "Alt";
+        if (cssValueText !== null) {
+          if (cssValueText.match(/#[\da-f]{3,6}$/i)) {
+            this.setTitle(
+              i18nString(UIStrings.incrementdecrementWithMousewheelOne, { PH1: cmdOrCtrl, PH2: optionOrAlt })
+            );
+          } else if (cssValueText.match(/\d+/)) {
+            this.setTitle(
+              i18nString(UIStrings.incrementdecrementWithMousewheelHundred, { PH1: cmdOrCtrl, PH2: optionOrAlt })
+            );
+          }
+        }
+      }
+    }
+    const devtoolsLocale = i18n.DevToolsLocale.DevToolsLocale.instance();
+    if (AiCodeCompletion.AiCodeCompletion.AiCodeCompletion.isAiCodeCompletionStylesEnabled(devtoolsLocale.locale)) {
+      this.aiCodeCompletionConfig = {
+        completionContext: {},
+        generationContext: {},
+        onFeatureEnabled: () => {
+        },
+        onFeatureDisabled: () => {
+        },
+        onSuggestionAccepted: () => {
+        },
+        onRequestTriggered: () => {
+        },
+        onResponseReceived: () => {
+        },
+        panel: AiCodeCompletion.AiCodeCompletion.ContextFlavor.STYLES,
+        getCompletionHint: this.getCompletionHint.bind(this),
+        getCurrentText: () => {
+          return this.text();
+        },
+        setAiAutoCompletion: this.setAiAutoCompletion.bind(this)
+      };
+      this.aiCodeCompletionProvider = StylesAiCodeCompletionProvider.StylesAiCodeCompletionProvider.createInstance(this.aiCodeCompletionConfig);
+    }
+  }
+  onKeyDown(event) {
+    const keyboardEvent = event;
+    switch (keyboardEvent.key) {
+      case "ArrowUp":
+      case "ArrowDown":
+      case "PageUp":
+      case "PageDown":
+        if (!this.isSuggestBoxVisible() && this.handleNameOrValueUpDown(keyboardEvent)) {
+          keyboardEvent.preventDefault();
+          return;
+        }
+        break;
+      case "Enter":
+        if (keyboardEvent.shiftKey) {
+          return;
+        }
+        this.tabKeyPressed();
+        keyboardEvent.preventDefault();
+        return;
+      case " ":
+        if (this.isEditingName) {
+          this.tabKeyPressed();
+          keyboardEvent.preventDefault();
+          return;
+        }
+    }
+    super.onKeyDown(keyboardEvent);
+  }
+  onMouseWheel(event) {
+    if (this.handleNameOrValueUpDown(event)) {
+      event.consume(true);
+      return;
+    }
+    super.onMouseWheel(event);
+  }
+  tabKeyPressed() {
+    this.acceptAutoComplete();
+    return false;
+  }
+  onInput(event) {
+    super.onInput(event);
+    if (this.aiCodeCompletionProvider) {
+      this.#debouncedTriggerAiCodeCompletion();
+    }
+  }
+  handleNameOrValueUpDown(event) {
+    function finishHandler(_originalValue, _replacementString) {
+      if (this.treeElement.nameElement && this.treeElement.valueElement) {
+        void this.treeElement.applyStyleText(
+          this.treeElement.nameElement.textContent + ": " + this.treeElement.valueElement.textContent,
+          false
+        );
+      }
+    }
+    function customNumberHandler(prefix, number, suffix) {
+      if (number !== 0 && !suffix.length && SDK.CSSMetadata.cssMetadata().isLengthProperty(this.treeElement.property.name) && !this.treeElement.property.value.toLowerCase().startsWith("calc(")) {
+        suffix = "px";
+      }
+      return prefix + number + suffix;
+    }
+    if (!this.isEditingName && this.treeElement.valueElement && UI.UIUtils.handleElementValueModifications(
+      event,
+      this.treeElement.valueElement,
+      finishHandler.bind(this),
+      this.isValueSuggestion.bind(this),
+      customNumberHandler.bind(this)
+    )) {
+      return true;
+    }
+    return false;
+  }
+  isValueSuggestion(word) {
+    if (!word) {
+      return false;
+    }
+    word = word.toLowerCase();
+    return this.cssCompletions.indexOf(word) !== -1 || word.startsWith("--");
+  }
+  async buildPropertyCompletions(expression, query, force) {
+    const lowerQuery = query.toLowerCase();
+    const editingVariable = !this.isEditingName && expression.trim().endsWith("var(");
+    if (this.isEditingName && expression) {
+      const invalidCharsRegex = /["':;,\s()]/;
+      if (invalidCharsRegex.test(expression)) {
+        return await Promise.resolve([]);
+      }
+    }
+    if (!query && !force && !editingVariable && (this.isEditingName || expression)) {
+      return await Promise.resolve([]);
+    }
+    const prefixResults = [];
+    const anywhereResults = [];
+    if (!editingVariable) {
+      this.cssCompletions.forEach((completion) => filterCompletions.call(
+        this,
+        completion,
+        false
+        /* variable */
+      ));
+      if (this.isEditingName) {
+        SDK.CSSMetadata.cssMetadata().aliasesFor().forEach((canonicalProperty, alias) => {
+          const index = alias.toLowerCase().indexOf(lowerQuery);
+          if (index !== 0) {
+            return;
+          }
+          const aliasResult = {
+            text: alias,
+            priority: SDK.CSSMetadata.cssMetadata().propertyUsageWeight(alias),
+            isCSSVariableColor: false
+          };
+          const canonicalPropertyResult = {
+            text: canonicalProperty,
+            priority: SDK.CSSMetadata.cssMetadata().propertyUsageWeight(canonicalProperty),
+            subtitle: `= ${alias}`,
+            // This explains why this canonicalProperty is prompted.
+            isCSSVariableColor: false
+          };
+          prefixResults.push(aliasResult, canonicalPropertyResult);
+        });
+      }
+    }
+    const node = this.treeElement.node();
+    if (this.isEditingName && node) {
+      const nameValuePresets = SDK.CSSMetadata.cssMetadata().nameValuePresets(node.isSVGNode());
+      nameValuePresets.forEach(
+        (preset) => filterCompletions.call(
+          this,
+          preset,
+          false,
+          true
+          /* nameValue */
+        )
+      );
+    }
+    if (this.isEditingName || editingVariable) {
+      this.cssVariables.forEach((variable) => filterCompletions.call(
+        this,
+        variable,
+        true
+        /* variable */
+      ));
+    }
+    const results = prefixResults.concat(anywhereResults);
+    if (!this.isEditingName && !results.length && query.length > 1 && "!important".startsWith(lowerQuery)) {
+      results.push({
+        text: "!important"
+      });
+    }
+    const userEnteredText = query.replace("-", "");
+    if (userEnteredText && userEnteredText === userEnteredText.toUpperCase()) {
+      for (let i = 0; i < results.length; ++i) {
+        if (!results[i].text.startsWith("--")) {
+          results[i].text = results[i].text.toUpperCase();
+        }
+      }
+    }
+    for (const result of results) {
+      if (editingVariable) {
+        result.title = result.text;
+        result.text += ")";
+        continue;
+      }
+      const valuePreset = SDK.CSSMetadata.cssMetadata().getValuePreset(this.treeElement.name, result.text);
+      if (!this.isEditingName && valuePreset) {
+        result.title = result.text;
+        result.text = valuePreset.text;
+        result.selectionRange = { startColumn: valuePreset.startColumn, endColumn: valuePreset.endColumn };
+      }
+    }
+    const ensureComputedStyles = async () => {
+      if (!node || this.selectedNodeComputedStyles) {
+        return;
+      }
+      this.selectedNodeComputedStyles = await node.domModel().cssModel().getComputedStyle(node.id);
+      const parentNode = node.parentNode;
+      if (parentNode) {
+        this.parentNodeComputedStyles = await parentNode.domModel().cssModel().getComputedStyle(parentNode.id);
+      }
+    };
+    for (const result of results) {
+      await ensureComputedStyles();
+      const iconInfo = ElementsComponents.CSSPropertyIconResolver.findIcon(
+        this.isEditingName ? result.text : `${this.treeElement.property.name}: ${result.text}`,
+        this.selectedNodeComputedStyles,
+        this.parentNodeComputedStyles
+      );
+      if (!iconInfo) {
+        continue;
+      }
+      const icon = new Icon();
+      icon.name = iconInfo.iconName;
+      icon.classList.add("extra-small");
+      icon.style.transform = `rotate(${iconInfo.rotate}deg) scale(${iconInfo.scaleX * 1.1}, ${iconInfo.scaleY * 1.1})`;
+      icon.style.maxHeight = "var(--sys-size-6)";
+      icon.style.maxWidth = "var(--sys-size-6)";
+      result.iconElement = icon;
+    }
+    if (this.isColorAware && !this.isEditingName) {
+      results.sort((a, b) => {
+        if (a.isCSSVariableColor && b.isCSSVariableColor) {
+          return 0;
+        }
+        return a.isCSSVariableColor ? -1 : 1;
+      });
+    }
+    return await Promise.resolve(results);
+    function filterCompletions(completion, variable, nameValue) {
+      const index = completion.toLowerCase().indexOf(lowerQuery);
+      const result = {
+        text: completion,
+        isCSSVariableColor: false
+      };
+      if (variable) {
+        const computedValue = this.treeElement.matchedStyles().computeCSSVariable(this.treeElement.property.ownerStyle, completion);
+        if (computedValue) {
+          const color = Common.Color.parse(computedValue.value);
+          if (color) {
+            result.subtitleRenderer = colorSwatchRenderer.bind(null, color);
+            result.isCSSVariableColor = true;
+          } else {
+            result.subtitleRenderer = computedValueSubtitleRenderer.bind(null, computedValue.value);
+          }
+        }
+      }
+      if (nameValue) {
+        result.hideGhostText = true;
+      }
+      if (index === 0) {
+        result.priority = this.isEditingName ? SDK.CSSMetadata.cssMetadata().propertyUsageWeight(completion) : 1;
+        prefixResults.push(result);
+      } else if (index > -1) {
+        anywhereResults.push(result);
+      }
+    }
+    function colorSwatchRenderer(color) {
+      const swatch = new InlineEditor.ColorSwatch.ColorSwatch();
+      swatch.renderColor(color);
+      swatch.style.pointerEvents = "none";
+      return swatch;
+    }
+    function computedValueSubtitleRenderer(computedValue) {
+      const subtitleElement = document.createElement("span");
+      subtitleElement.className = "suggestion-subtitle";
+      subtitleElement.textContent = `${computedValue}`;
+      subtitleElement.style.maxWidth = "100px";
+      subtitleElement.title = `${computedValue}`;
+      return subtitleElement;
+    }
+  }
+  async triggerAiCodeCompletion() {
+    const selection = this.element().getComponentSelection();
+    if (!this.aiCodeCompletionProvider || !selection || selection.rangeCount === 0) {
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const userInput = this.text();
+    if (range.endOffset < userInput.length) {
+      return;
+    }
+    const cssModel = this.treeElement.stylesContainer().cssModel();
+    if (!cssModel) {
+      return;
+    }
+    await this.aiCodeCompletionProvider.triggerAiCodeCompletion(
+      userInput,
+      range.endOffset,
+      this.isEditingName,
+      this.treeElement.property,
+      cssModel
+    );
+  }
+  setAiAutoCompletion(args) {
+    if (!args) {
+      this.treeElement.section().clearGhostStyleTreeElements();
+      return;
+    }
+    this.showAiGhostText(args?.text);
+    const latency = performance.now() - args.startTime;
+    if (args.rpcGlobalId) {
+      args.onImpression(args.rpcGlobalId, latency, args.sampleId);
+    }
+  }
+  showAiGhostText(text) {
+    const [currentLine, ...nextLinesList] = text.split(";");
+    const nextLines = nextLinesList.join(";").trim();
+    if (this.isEditingName && currentLine.includes(":")) {
+      const [namePart, valuePart] = currentLine.split(":").map((s) => s.trim());
+      this.applySuggestion({ text: this.text() + namePart }, true);
+      this.treeElement.showGhostTextInValue(valuePart);
+    } else {
+      this.applySuggestion({ text: this.text() + currentLine }, true);
+    }
+    if (nextLines) {
+      this.treeElement.section().renderGhostStyleTreeElements(nextLines);
+    } else {
+      this.treeElement.section().clearGhostStyleTreeElements();
+    }
+  }
+  /**
+   * Extracts the remaining portion of the suggestion text that follows the
+   * user's current input.
+   */
+  getCompletionHint() {
+    const topSuggestion = this.isSuggestBoxVisible() ? this.suggestBox?.completion() : null;
+    const suggestionText = topSuggestion?.text;
+    if (!suggestionText) {
+      return null;
+    }
+    const userInput = this.text();
+    let completionHint = suggestionText;
+    for (let i = Math.min(userInput.length, suggestionText.length); i > 0; i--) {
+      const overlapCandidate = suggestionText.substring(0, i);
+      if (userInput.endsWith(overlapCandidate)) {
+        completionHint = suggestionText.slice(i);
+        break;
+      }
+    }
+    return completionHint;
+  }
+}
+export function unescapeCssString(input) {
+  const reCssEscapeSequence = /(?<!\\)\\(?:([a-fA-F0-9]{1,6})|(.))[\n\t\x20]?/gs;
+  return input.replace(reCssEscapeSequence, (_, $1, $2) => {
+    if ($2) {
+      return $2;
+    }
+    const codePoint = parseInt($1, 16);
+    const isSurrogate = 55296 <= codePoint && codePoint <= 57343;
+    if (isSurrogate || codePoint === 0 || codePoint > 1114111) {
+      return "\uFFFD";
+    }
+    return String.fromCodePoint(codePoint);
+  });
+}
+export function escapeUrlAsCssComment(urlText) {
+  const url = new URL(urlText);
+  if (url.search) {
+    return `${url.origin}${url.pathname}${url.search.replaceAll("*/", "*%2F")}${url.hash}`;
+  }
+  return url.toString();
+}
+export class ActionDelegate {
+  handleAction(_context, actionId) {
+    switch (actionId) {
+      case "elements.new-style-rule": {
+        Host.userMetrics.actionTaken(Host.UserMetrics.Action.NewStyleRuleAdded);
+        void ElementsPanel.instance().stylesWidget.createNewRuleInViaInspectorStyleSheet();
+        return true;
+      }
+    }
+    return false;
+  }
+}
+let buttonProviderInstance;
+export class ButtonProvider {
+  button;
+  constructor() {
+    this.button = UI.Toolbar.Toolbar.createActionButton("elements.new-style-rule");
+    this.button.setLongClickable(true);
+    new UI.UIUtils.LongClickController(this.button.element, this.longClicked.bind(this));
+    UI.Context.Context.instance().addFlavorChangeListener(SDK.DOMModel.DOMNode, onNodeChanged.bind(this));
+    onNodeChanged.call(this);
+    function onNodeChanged() {
+      let node = UI.Context.Context.instance().flavor(SDK.DOMModel.DOMNode);
+      node = node ? node.enclosingElementOrSelf() : null;
+      this.button.setEnabled(Boolean(node));
+    }
+  }
+  static instance(opts = { forceNew: null }) {
+    const { forceNew } = opts;
+    if (!buttonProviderInstance || forceNew) {
+      buttonProviderInstance = new ButtonProvider();
+    }
+    return buttonProviderInstance;
+  }
+  longClicked(event) {
+    ElementsPanel.instance().stylesWidget.onAddButtonLongClick(event);
+  }
+  item() {
+    return this.button;
+  }
+}
+//# sourceMappingURL=StylesSidebarPane.js.map

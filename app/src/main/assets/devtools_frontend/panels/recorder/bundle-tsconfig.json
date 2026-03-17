@@ -1,0 +1,1 @@
+{"compilerOptions":{"composite":true,"outDir":".","baseUrl":".","rootDir":"../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/recorder"},"files":["../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/recorder/recorder.ts"],"references":[{"path":"./css_files-tsconfig.json"},{"path":"./recorder-tsconfig.json"}]}

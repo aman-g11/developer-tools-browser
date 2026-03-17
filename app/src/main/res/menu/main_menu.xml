@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_new_tab"
+        android:title="@string/new_tab" />
+    <item
+        android:id="@+id/menu_close_tab"
+        android:title="@string/close_tab" />
+    <item
+        android:id="@+id/menu_devtools"
+        android:title="@string/developer_tools" />
+    <item
+        android:id="@+id/menu_inspect"
+        android:title="@string/inspect" />
+    <item
+        android:id="@+id/menu_find_in_page"
+        android:title="@string/find_in_page" />
+    <item
+        android:id="@+id/menu_view_source"
+        android:title="@string/view_source" />
+    <item
+        android:id="@+id/menu_dock_bottom"
+        android:title="@string/dock_bottom" />
+    <item
+        android:id="@+id/menu_dock_right"
+        android:title="@string/dock_right" />
+    <item
+        android:id="@+id/menu_settings"
+        android:title="@string/settings" />
+</menu>

@@ -1,0 +1,1 @@
+{"compilerOptions":{"composite":true,"outDir":".","baseUrl":".","rootDir":"../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/console_counters"},"files":["../../../../../../../../../third_party/devtools-frontend/src/front_end/panels/console_counters/console_counters.ts"],"references":[{"path":"./console_counters-tsconfig.json"}]}

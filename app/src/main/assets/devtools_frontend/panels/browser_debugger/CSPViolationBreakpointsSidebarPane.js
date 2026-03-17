@@ -1,0 +1,25 @@
+"use strict";
+import * as SDK from "../../core/sdk/sdk.js";
+import * as VisualLogging from "../../ui/visual_logging/visual_logging.js";
+import { CategorizedBreakpointsSidebarPane } from "./CategorizedBreakpointsSidebarPane.js";
+export class CSPViolationBreakpointsSidebarPane extends CategorizedBreakpointsSidebarPane {
+  constructor() {
+    const breakpoints = SDK.DOMDebuggerModel.DOMDebuggerManager.instance().cspViolationBreakpoints();
+    super(
+      breakpoints,
+      `${VisualLogging.section("sources.csp-violation-breakpoints")}`,
+      "sources.csp-violation-breakpoints"
+    );
+  }
+  getBreakpointFromPausedDetails(details) {
+    const breakpointType = details.auxData?.["violationType"] ? details.auxData["violationType"] : "";
+    const breakpoints = SDK.DOMDebuggerModel.DOMDebuggerManager.instance().cspViolationBreakpoints();
+    const breakpoint = breakpoints.find((x) => x.type() === breakpointType);
+    return breakpoint ? breakpoint : null;
+  }
+  onBreakpointChanged(breakpoint, enabled) {
+    super.onBreakpointChanged(breakpoint, enabled);
+    SDK.DOMDebuggerModel.DOMDebuggerManager.instance().updateCSPViolationBreakpoints();
+  }
+}
+//# sourceMappingURL=CSPViolationBreakpointsSidebarPane.js.map

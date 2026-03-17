@@ -1,0 +1,105 @@
+"use strict";
+import { DOMModel } from "./DOMModel.js";
+export var Layer;
+((Layer2) => {
+  let ScrollRectType;
+  ((ScrollRectType2) => {
+    ScrollRectType2["NON_FAST_SCROLLABLE"] = "NonFastScrollable";
+    ScrollRectType2["TOUCH_EVENT_HANDLER"] = "TouchEventHandler";
+    ScrollRectType2["WHEEL_EVENT_HANDLER"] = "WheelEventHandler";
+    ScrollRectType2["REPAINTS_ON_SCROLL"] = "RepaintsOnScroll";
+    ScrollRectType2["MAIN_THREAD_SCROLL_REASON"] = "MainThreadScrollingReason";
+  })(ScrollRectType = Layer2.ScrollRectType || (Layer2.ScrollRectType = {}));
+})(Layer || (Layer = {}));
+export class StickyPositionConstraint {
+  #stickyBoxRect;
+  #containingBlockRect;
+  #nearestLayerShiftingStickyBox;
+  #nearestLayerShiftingContainingBlock;
+  constructor(layerTree, constraint) {
+    this.#stickyBoxRect = constraint.stickyBoxRect;
+    this.#containingBlockRect = constraint.containingBlockRect;
+    this.#nearestLayerShiftingStickyBox = null;
+    if (layerTree && constraint.nearestLayerShiftingStickyBox) {
+      this.#nearestLayerShiftingStickyBox = layerTree.layerById(constraint.nearestLayerShiftingStickyBox);
+    }
+    this.#nearestLayerShiftingContainingBlock = null;
+    if (layerTree && constraint.nearestLayerShiftingContainingBlock) {
+      this.#nearestLayerShiftingContainingBlock = layerTree.layerById(constraint.nearestLayerShiftingContainingBlock);
+    }
+  }
+  stickyBoxRect() {
+    return this.#stickyBoxRect;
+  }
+  containingBlockRect() {
+    return this.#containingBlockRect;
+  }
+  nearestLayerShiftingStickyBox() {
+    return this.#nearestLayerShiftingStickyBox;
+  }
+  nearestLayerShiftingContainingBlock() {
+    return this.#nearestLayerShiftingContainingBlock;
+  }
+}
+export class LayerTreeBase {
+  #target;
+  #domModel;
+  layersById = /* @__PURE__ */ new Map();
+  #root = null;
+  #contentRoot = null;
+  #backendNodeIdToNode = /* @__PURE__ */ new Map();
+  #viewportSize;
+  constructor(target) {
+    this.#target = target;
+    this.#domModel = target ? target.model(DOMModel) : null;
+  }
+  target() {
+    return this.#target;
+  }
+  root() {
+    return this.#root;
+  }
+  setRoot(root) {
+    this.#root = root;
+  }
+  contentRoot() {
+    return this.#contentRoot;
+  }
+  setContentRoot(contentRoot) {
+    this.#contentRoot = contentRoot;
+  }
+  forEachLayer(callback, root) {
+    if (!root) {
+      root = this.root();
+      if (!root) {
+        return false;
+      }
+    }
+    return callback(root) || root.children().some(this.forEachLayer.bind(this, callback));
+  }
+  layerById(id) {
+    return this.layersById.get(id) || null;
+  }
+  async resolveBackendNodeIds(requestedNodeIds) {
+    if (!requestedNodeIds.size || !this.#domModel) {
+      return;
+    }
+    const nodesMap = await this.#domModel.pushNodesByBackendIdsToFrontend(requestedNodeIds);
+    if (!nodesMap) {
+      return;
+    }
+    for (const nodeId of nodesMap.keys()) {
+      this.#backendNodeIdToNode.set(nodeId, nodesMap.get(nodeId) || null);
+    }
+  }
+  backendNodeIdToNode() {
+    return this.#backendNodeIdToNode;
+  }
+  setViewportSize(viewportSize) {
+    this.#viewportSize = viewportSize;
+  }
+  viewportSize() {
+    return this.#viewportSize;
+  }
+}
+//# sourceMappingURL=LayerTreeBase.js.map
