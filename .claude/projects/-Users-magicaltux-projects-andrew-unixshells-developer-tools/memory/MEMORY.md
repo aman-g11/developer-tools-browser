@@ -1,0 +1,1 @@
+- [feedback_no_rounded_corners_icons.md](feedback_no_rounded_corners_icons.md) - App icons must be square, no rounded corners

@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
         prefs = getSharedPreferences("devbrowser_settings", Context.MODE_PRIVATE)
 
         findViews()
+        setupWindowInsets()
         setupTabManager()
         setupDevToolsWebView()
         setupToolbar()
@@ -84,6 +85,15 @@ class MainActivity : AppCompatActivity() {
         // Create first tab
         val intentUrl = intent?.dataString
         tabManager.createTab(intentUrl ?: "https://www.google.com")
+    }
+
+    private fun setupWindowInsets() {
+        val rootLayout = findViewById<LinearLayout>(R.id.rootLayout)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
+            val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
+        }
     }
 
     private fun findViews() {

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background (square — app stores apply their own mask) -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Globe (subtle background element) -->
+  <g fill="none" stroke="#4fc3f7" opacity="0.18">
+    <circle cx="256" cy="256" r="155" stroke-width="3"/>
+    <line x1="101" y1="256" x2="411" y2="256" stroke-width="2"/>
+    <ellipse cx="256" cy="256" rx="55" ry="155" stroke-width="2"/>
+    <path d="M 115 196 Q 256 170 397 196" stroke-width="1.5"/>
+    <path d="M 115 316 Q 256 342 397 316" stroke-width="1.5"/>
+  </g>
+
+  <!-- Code brackets </> with glow -->
+  <g filter="url(#glow)">
+    <!-- < left bracket -->
+    <path d="M 198 186 L 108 256 L 198 326"
+          fill="none" stroke="#4fc3f7" stroke-width="24"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- > right bracket -->
+    <path d="M 314 186 L 404 256 L 314 326"
+          fill="none" stroke="#4fc3f7" stroke-width="24"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- / forward slash -->
+    <line x1="280" y1="178" x2="232" y2="334"
+          stroke="#81d4fa" stroke-width="20" stroke-linecap="round"/>
+  </g>
+</svg>
