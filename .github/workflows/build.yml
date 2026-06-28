@@ -1,7 +1,7 @@
 name: Remote Android Build
 
 on:
-  workflow_dispatch: # Allows you to start the build manually with a click
+  workflow_dispatch:
 
 jobs:
   build:
@@ -10,6 +10,7 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
+    # Using Java 17 as it supports most modern Gradle versions
     - name: Set up Java
       uses: actions/setup-java@v4
       with:
@@ -20,11 +21,20 @@ jobs:
     - name: Grant Build Permissions
       run: chmod +x gradlew
 
-    - name: Build APK
-      run: ./gradlew assembleDebug
+    # This creates a dummy properties file to trick the build if keys are missing
+    - name: Bypass Missing Properties
+      run: |
+        echo "sdk.dir=$ANDROID_HOME" > local.properties
+        touch app/google-services.json || true
 
+    # Clean the project cache first before trying to compile again
+    - name: Clean and Build APK
+      run: ./gradlew clean assembleDebug --stacktrace
+      
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: Finished-APK
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: |
+          **/build/outputs/apk/debug/*.apk
+          **/build/outputs/apk/*/*.apk
