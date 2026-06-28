@@ -10,7 +10,6 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # Using Java 17 as it supports most modern Gradle versions
     - name: Set up Java
       uses: actions/setup-java@v4
       with:
@@ -21,19 +20,28 @@ jobs:
     - name: Grant Build Permissions
       run: chmod +x gradlew
 
-    # This creates a dummy properties file to trick the build if keys are missing
-    - name: Bypass Missing Properties
+    - name: Fix Hardcoded Paths and Properties
       run: |
+        # Reset local properties
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         touch app/google-services.json || true
+        
+        # Force Gradle to use the GitHub runner's actual Java home path
+        if [ -f gradle.properties ]; then
+          sed -i '/org.gradle.java.home/d' gradle.properties
+        fi
+        echo "org.gradle.java.home=$JAVA_HOME" >> gradle.properties
 
-    # Clean the project cache first before trying to compile again
     - name: Clean and Build APK
       run: ./gradlew clean assembleDebug --stacktrace
       
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
+        name: Finished-APK
+        path: |
+          **/build/outputs/apk/debug/*.apk
+          **/build/outputs/apk/*/*.apk
         name: Finished-APK
         path: |
           **/build/outputs/apk/debug/*.apk
